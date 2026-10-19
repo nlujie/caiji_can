@@ -12,41 +12,41 @@
 #include "filter.h"
 #include "modbus_rtu_master.h"
 
-// È«¾Ö±äÁ¿¶¨Òå
+// å…¨å±€å˜é‡å®šä¹‰
 Task_Timer task_tim1 = {0};
 CAN_Message can_rx_msg = {0, 0, 0, 0, {0}};
 
 
-// ÔÚfunc.cµÄÈ«¾Ö±äÁ¿ÇøÓòÌí¼Ó
-// ÎÂÊª¶È¶ÁÈ¡Ïà¹Ø±äÁ¿
+// åœ¨func.cçš„å…¨å±€å˜é‡åŒºåŸŸæ·»åŠ 
+// æ¸©æ¹¿åº¦è¯»å–ç›¸å…³å˜é‡
 extern HTM440_Data_t htm440_data;
-uint32_t htm440_read_interval = 2000;  // Ä¬ÈÏ2Ãë¶ÁÈ¡Ò»´Î
+uint32_t htm440_read_interval = 2000;  // é»˜è®¤2ç§’è¯»å–ä¸€æ¬¡
 uint32_t last_read_attempt = 0;
 uint32_t last_htm440_read_time = 0;
-uint8_t htm440_enabled = 1;  // ÎÂÊª¶È¶ÁÈ¡Ê¹ÄÜ±êÖ¾
-uint8_t htm440_slave_addr = 0x01;  // Ä¬ÈÏ´ÓÕ¾µØÖ·
+uint8_t htm440_enabled = 1;  // æ¸©æ¹¿åº¦è¯»å–ä½¿èƒ½æ ‡å¿—
+uint8_t htm440_slave_addr = 0x01;  // é»˜è®¤ä»ç«™åœ°å€
 
 
-// ¸´ºÏÂË²¨½á¹¹Ìå¶¨Òå
-// SPI1µÚÒ»¸öĞ¾Æ¬¸´ºÏÂË²¨
+// å¤åˆæ»¤æ³¢ç»“æ„ä½“å®šä¹‰
+// SPI1ç¬¬ä¸€ä¸ªèŠ¯ç‰‡å¤åˆæ»¤æ³¢
 CompositeFilter comp_filter_spi1_chip1_ain0 = {0};
 CompositeFilter comp_filter_spi1_chip1_ain1 = {0};
 CompositeFilter comp_filter_spi1_chip1_ain2 = {0};
 CompositeFilter comp_filter_spi1_chip1_ain3 = {0};
 
-// SPI1µÚ¶ş¸öĞ¾Æ¬¸´ºÏÂË²¨
+// SPI1ç¬¬äºŒä¸ªèŠ¯ç‰‡å¤åˆæ»¤æ³¢
 CompositeFilter comp_filter_spi1_chip2_ain0 = {0};
 CompositeFilter comp_filter_spi1_chip2_ain1 = {0};
 CompositeFilter comp_filter_spi1_chip2_ain2 = {0};
 CompositeFilter comp_filter_spi1_chip2_ain3 = {0};
 
-// SPI2Ğ¾Æ¬¸´ºÏÂË²¨
+// SPI2èŠ¯ç‰‡å¤åˆæ»¤æ³¢
 CompositeFilter comp_filter_spi2_ain0 = {0};
 CompositeFilter comp_filter_spi2_ain1 = {0};
 CompositeFilter comp_filter_spi2_ain2 = {0};
 CompositeFilter comp_filter_spi2_ain3 = {0};
 
-// ÂË²¨ºóµÄADCÖµ
+// æ»¤æ³¢åçš„ADCå€¼
 uint16_t filtered_adc_spi1_chip1_ain0 = 0;
 uint16_t filtered_adc_spi1_chip1_ain1 = 0;
 uint16_t filtered_adc_spi1_chip1_ain2 = 0;
@@ -60,26 +60,26 @@ uint16_t filtered_adc_spi1_chip2_ain3 = 0;
 uint16_t filtered_adc_spi2_ain0 = 0;
 uint16_t filtered_adc_spi2_ain1 = 0;
 uint16_t filtered_adc_spi2_ain2 = 0;
-uint16_t filtered_adc_spi2_ain3 = 0;// ÂË²¨½á¹¹Ìå¶¨Òå
-//// SPI1µÚÒ»¸öĞ¾Æ¬ÂË²¨
+uint16_t filtered_adc_spi2_ain3 = 0;// æ»¤æ³¢ç»“æ„ä½“å®šä¹‰
+//// SPI1ç¬¬ä¸€ä¸ªèŠ¯ç‰‡æ»¤æ³¢
 //FilterStruct_Float filter_spi1_chip1_ain0 = {0};
 //FilterStruct_Float filter_spi1_chip1_ain1 = {0};
 //FilterStruct_Float filter_spi1_chip1_ain2 = {0};
 //FilterStruct_Float filter_spi1_chip1_ain3 = {0};
 
-//// SPI1µÚ¶ş¸öĞ¾Æ¬ÂË²¨
+//// SPI1ç¬¬äºŒä¸ªèŠ¯ç‰‡æ»¤æ³¢
 //FilterStruct_Float filter_spi1_chip2_ain0 = {0};
 //FilterStruct_Float filter_spi1_chip2_ain1 = {0};
 //FilterStruct_Float filter_spi1_chip2_ain2 = {0};
 //FilterStruct_Float filter_spi1_chip2_ain3 = {0};
 
-//// SPI2Ğ¾Æ¬ÂË²¨
+//// SPI2èŠ¯ç‰‡æ»¤æ³¢
 //FilterStruct_Float filter_spi2_ain0 = {0};
 //FilterStruct_Float filter_spi2_ain1 = {0};
 //FilterStruct_Float filter_spi2_ain2 = {0};
 //FilterStruct_Float filter_spi2_ain3 = {0};
 
-//// ÂË²¨ºóµÄADCÖµ
+//// æ»¤æ³¢åçš„ADCå€¼
 //uint16_t filtered_adc_spi1_chip1_ain0 = 0;
 //uint16_t filtered_adc_spi1_chip1_ain1 = 0;
 //uint16_t filtered_adc_spi1_chip1_ain2 = 0;
@@ -97,32 +97,32 @@ uint16_t filtered_adc_spi2_ain3 = 0;// ÂË²¨½á¹¹Ìå¶¨Òå
 
 
 
-// SPI1µÚÒ»¸öĞ¾Æ¬ (PA4Æ¬Ñ¡)
+// SPI1ç¬¬ä¸€ä¸ªèŠ¯ç‰‡ (PA4ç‰‡é€‰)
 float spi1_chip1_ain0_current = 0.0f;
 float spi1_chip1_ain1_current = 0.0f;  
 float spi1_chip1_ain2_temp = 0.0f;
 float spi1_chip1_ain3_temp = 0.0f;
 
-// SPI1µÚ¶ş¸öĞ¾Æ¬ (PA8Æ¬Ñ¡)
+// SPI1ç¬¬äºŒä¸ªèŠ¯ç‰‡ (PA8ç‰‡é€‰)
 float spi1_chip2_ain0_current = 0.0f;
 float spi1_chip2_ain1_current = 0.0f;
 float spi1_chip2_ain2_current = 0.0f;
 float spi1_chip2_ain3_temp = 0.0f;
 
-// SPI2Ğ¾Æ¬
+// SPI2èŠ¯ç‰‡
 float spi2_ain0_voltage = 0.0f;
 float spi2_ain1_current = 0.0f;
 float spi2_ain2_current = 0.0f;
 float spi2_ain3_temp = 0.0f;
 
-// Ô­Ê¼ADCÊı¾İ´æ´¢£¨Ê¹ÓÃ½á¹¹Ìå£©
+// åŸå§‹ADCæ•°æ®å­˜å‚¨ï¼ˆä½¿ç”¨ç»“æ„ä½“ï¼‰
 ADC_Raw_Data_t raw_adc_spi1_chip1 = {0};
 ADC_Raw_Data_t raw_adc_spi1_chip2 = {0};
 ADC_Raw_Data_t raw_adc_spi2 = {0};
 
-// Ğ¾Æ¬ÅäÖÃ±í
+// èŠ¯ç‰‡é…ç½®è¡¨
 const Chip_Config_t chip_configs[] = {
-    // SPI1µÚÒ»¸öĞ¾Æ¬ÅäÖÃ (PA4)
+    // SPI1ç¬¬ä¸€ä¸ªèŠ¯ç‰‡é…ç½® (PA4)
     {
         "SPI1-Chip1(PA4)",
         {
@@ -132,7 +132,7 @@ const Chip_Config_t chip_configs[] = {
             {SENSOR_THERMISTOR, "Temp"}    // AIN3
         }
     },
-    // SPI1µÚ¶ş¸öĞ¾Æ¬ÅäÖÃ (PA8)
+    // SPI1ç¬¬äºŒä¸ªèŠ¯ç‰‡é…ç½® (PA8)
     {
         "SPI1-Chip2(PA8)",
         {
@@ -142,7 +142,7 @@ const Chip_Config_t chip_configs[] = {
             {SENSOR_THERMISTOR, "Temp"}    // AIN3
         }
     },
-    // SPI2Ğ¾Æ¬ÅäÖÃ (PB12)
+    // SPI2èŠ¯ç‰‡é…ç½® (PB12)
     {
         "SPI2-Chip(PB12)",
         {
@@ -155,38 +155,38 @@ const Chip_Config_t chip_configs[] = {
 };
 
 
-// ×Ô¶¨Òå´®¿Ú·¢ËÍ¸¡µãÊıº¯Êı
+// è‡ªå®šä¹‰ä¸²å£å‘é€æµ®ç‚¹æ•°å‡½æ•°
 void Serial_SendFloat(float value, int decimal_places) {
    //// char buffer[20];
     
-    // ´¦Àí¸ºÊı
+    // å¤„ç†è´Ÿæ•°
     if(value < 0) {
         Serial_SendString("-");
         value = -value;
     }
     
-    // ÌáÈ¡ÕûÊı²¿·Ö
+    // æå–æ•´æ•°éƒ¨åˆ†
     int integer_part = (int)value;
     
-    // ÌáÈ¡Ğ¡Êı²¿·Ö
+    // æå–å°æ•°éƒ¨åˆ†
     float fractional_part = value - integer_part;
     int fractional_int = 0;
     
-    // ¼ÆËãĞ¡Êı²¿·ÖÎªÕûÊı
+    // è®¡ç®—å°æ•°éƒ¨åˆ†ä¸ºæ•´æ•°
     for(int i = 0; i < decimal_places; i++) {
         fractional_part *= 10;
     }
     fractional_int = (int)fractional_part;
     
-    // ·¢ËÍÕûÊı²¿·Ö
+    // å‘é€æ•´æ•°éƒ¨åˆ†
     char int_str[10];
     sprintf(int_str, "%d", integer_part);
     Serial_SendString(int_str);
     
-    // ·¢ËÍĞ¡Êıµã
+    // å‘é€å°æ•°ç‚¹
     Serial_SendString(".");
     
-    // ·¢ËÍĞ¡Êı²¿·Ö£¬²¹Áã
+    // å‘é€å°æ•°éƒ¨åˆ†ï¼Œè¡¥é›¶
     char frac_str[10];
     sprintf(frac_str, "%0*d", decimal_places, fractional_int);
     Serial_SendString(frac_str);
@@ -195,12 +195,12 @@ void Serial_SendFloat(float value, int decimal_places) {
 
 
 
-// ²ÎÊı¶¨Òå
+// å‚æ•°å®šä¹‰
 #define SHUNT_RESISTOR_100OHM     100.0f
 #define VOLTAGE_DIVIDER_RATIO     (10.0f / 2.048f)
 #define ADC_CONVERSION_FACTOR     0.0625f
 
-// NTC²ÎÊı
+// NTCå‚æ•°
 #define NTC_R25 10000.0f
 #define NTC_BETA 3435.0f
 #define NTC_T25 298.15f
@@ -210,11 +210,11 @@ void Serial_SendFloat(float value, int decimal_places) {
 #define NTC_EXCITATION_VOLTAGE_t2 2.048f
 #define NTC_EXCITATION_VOLTAGE_t3 2.048f
 
-// CAN»î¶¯¸ú×Ù
+// CANæ´»åŠ¨è·Ÿè¸ª
 uint32_t last_can_activity_time = 0;
 #define CAN_ACTIVITY_TIMEOUT  1000
 
-// »ñÈ¡´«¸ĞÆ÷ÀàĞÍÃû³Æ
+// è·å–ä¼ æ„Ÿå™¨ç±»å‹åç§°
 const char* Get_Sensor_Type_Name(Sensor_Type_t type) {
     switch(type) {
         case SENSOR_4_20MA: return "4-20mA";
@@ -224,7 +224,7 @@ const char* Get_Sensor_Type_Name(Sensor_Type_t type) {
     }
 }
 
-// ¶ÀÁ¢¿´ÃÅ¹·³õÊ¼»¯
+// ç‹¬ç«‹çœ‹é—¨ç‹—åˆå§‹åŒ–
 //void IWDG_Init(uint32_t timeout_ms) {
 //    RCC_LSICmd(ENABLE);
 //    while(RCC_GetFlagStatus(RCC_FLAG_LSIRDY) == RESET);
@@ -249,7 +249,7 @@ const char* Get_Sensor_Type_Name(Sensor_Type_t type) {
 //    }
 //}
 
-// CAN½ÓÊÕ»Øµ÷
+// CANæ¥æ”¶å›è°ƒ
 void CAN_Rx_Callback(CanRxMsg* rx_msg) {
     can_rx_msg.id = rx_msg->StdId;
     can_rx_msg.IDE = rx_msg->IDE;
@@ -270,7 +270,7 @@ void CAN_Rx_Callback(CanRxMsg* rx_msg) {
 ////    Serial_SendString("\r\n");
 }
 
-// CANÄ£¿é³õÊ¼»¯
+// CANæ¨¡å—åˆå§‹åŒ–
 void CAN_Module_Init(void) {
     CAN_Mode_Init(CAN_SJW_1tq, CAN_BS2_8tq, CAN_BS1_9tq, 4, CAN_Mode_Normal);
     CAN_SetRxCallback(CAN_Rx_Callback);
@@ -278,47 +278,47 @@ void CAN_Module_Init(void) {
 //    Serial_SendString("CAN module initialized with interrupt mode\r\n");
 }
 
-// ½«µçÑ¹Öµ×ª»»ÎªµçÁ÷Öµ (Ê¹ÓÃ100¦¸·ÖÁ÷µç×è£¬2VÁ¿³Ì)
+// å°†ç”µå‹å€¼è½¬æ¢ä¸ºç”µæµå€¼ (ä½¿ç”¨100Î©åˆ†æµç”µé˜»ï¼Œ2Vé‡ç¨‹)
 float ConvertVoltageToCurrent_2V(float voltage_v) {
     if(voltage_v < 0.4f) voltage_v = 0.4f;
     if(voltage_v > 2.0f) voltage_v = 2.0f;
     return (voltage_v / SHUNT_RESISTOR_100OHM) * 1000.0f;
 }
 
-// ½«ADCµçÑ¹×ª»»ÎªÔ­Ê¼µçÑ¹ (0-10V)
+// å°†ADCç”µå‹è½¬æ¢ä¸ºåŸå§‹ç”µå‹ (0-10V)
 float ConvertVoltageToOriginal_10V(float voltage_v) {
     if(voltage_v < 0) voltage_v = 0;
     if(voltage_v > 2.048f) voltage_v = 2.048f;
     return voltage_v * VOLTAGE_DIVIDER_RATIO;
 }
 
-// ¸ù¾İµçÑ¹¼ÆËãNTCµç×èÖµ
+// æ ¹æ®ç”µå‹è®¡ç®—NTCç”µé˜»å€¼
 float CalculateNTCResistance(float voltage_v) {
     if (voltage_v >= NTC_EXCITATION_VOLTAGE) return 0.0f;
     return (voltage_v * REF_RESISTOR) / (NTC_EXCITATION_VOLTAGE - voltage_v);
 }
 
-// ¸ù¾İµçÑ¹¼ÆËãNTCµç×èÖµ
+// æ ¹æ®ç”µå‹è®¡ç®—NTCç”µé˜»å€¼
 float CalculateNTCResistance_t1(float voltage_v) {
     if (voltage_v >= NTC_EXCITATION_VOLTAGE_t1) return 0.0f;
     return (voltage_v * REF_RESISTOR) / (NTC_EXCITATION_VOLTAGE_t1 - voltage_v);
 }
 
-// ¸ù¾İµçÑ¹¼ÆËãNTCµç×èÖµ
+// æ ¹æ®ç”µå‹è®¡ç®—NTCç”µé˜»å€¼
 float CalculateNTCResistance_t2(float voltage_v) {
     if (voltage_v >= NTC_EXCITATION_VOLTAGE_t2) return 0.0f;
     return (voltage_v * REF_RESISTOR) / (NTC_EXCITATION_VOLTAGE_t2 - voltage_v);
 }
 
 
-// ¸ù¾İµçÑ¹¼ÆËãNTCµç×èÖµ
+// æ ¹æ®ç”µå‹è®¡ç®—NTCç”µé˜»å€¼
 float CalculateNTCResistance_t3(float voltage_v) {
     if (voltage_v >= NTC_EXCITATION_VOLTAGE_t3) return 0.0f;
     return (voltage_v * REF_RESISTOR) / (NTC_EXCITATION_VOLTAGE_t3 - voltage_v);
 }
 
 
-// ¸ù¾İNTCµç×è¼ÆËãÎÂ¶È
+// æ ¹æ®NTCç”µé˜»è®¡ç®—æ¸©åº¦
 float CalculateNTCTemperature(float resistance) {
     if (resistance <= 0.0f) return -273.15f;
     
@@ -332,17 +332,17 @@ float CalculateNTCTemperature(float resistance) {
     return steinhart - 273.15;
 }
 
-// CAN·¢ËÍÔ­Ê¼ADCÊı¾İ£¨Ê¹ÓÃÁªºÏÌå£©
+// CANå‘é€åŸå§‹ADCæ•°æ®ï¼ˆä½¿ç”¨è”åˆä½“ï¼‰
 void CAN_Send_ADC_Raw_Data(uint32_t can_id, CAN_Data_Union_t* can_data) {
     CanTxMsg tx_msg;
     
-    tx_msg.StdId = can_id;        // ±ê×¼ID
-    tx_msg.ExtId = can_id;        // À©Õ¹ID
-    tx_msg.IDE = CAN_Id_Standard; // ±ê×¼Ö¡
-    tx_msg.RTR = CAN_RTR_Data;    // Êı¾İÖ¡
-    tx_msg.DLC = 8;               // 8×Ö½ÚÊı¾İ³¤¶È
+    tx_msg.StdId = can_id;        // æ ‡å‡†ID
+    tx_msg.ExtId = can_id;        // æ‰©å±•ID
+    tx_msg.IDE = CAN_Id_Standard; // æ ‡å‡†å¸§
+    tx_msg.RTR = CAN_RTR_Data;    // æ•°æ®å¸§
+    tx_msg.DLC = 8;               // 8å­—èŠ‚æ•°æ®é•¿åº¦
     
-    // Ê¹ÓÃÁªºÏÌåÖ±½Ó¸´ÖÆ×Ö½ÚÊı¾İ
+    // ä½¿ç”¨è”åˆä½“ç›´æ¥å¤åˆ¶å­—èŠ‚æ•°æ®
     for(int i = 0; i < 8; i++) {
         tx_msg.Data[i] = can_data->bytes[i];
     }
@@ -359,7 +359,7 @@ void CAN_Send_ADC_Raw_Data(uint32_t can_id, CAN_Data_Union_t* can_data) {
 }
 
 
-////// ·¢ËÍÎÂÊª¶ÈÔ­Ê¼Êı¾İµ½CAN£¨ÕûÊı¸ñÊ½£©
+////// å‘é€æ¸©æ¹¿åº¦åŸå§‹æ•°æ®åˆ°CANï¼ˆæ•´æ•°æ ¼å¼ï¼‰
 ////void CAN_Send_HTM440_Raw_Data(void) {
 ////    CanTxMsg tx_msg;
 ////    HTM440_Raw_Data_Union_t raw_can_data;
@@ -370,7 +370,7 @@ void CAN_Send_ADC_Raw_Data(uint32_t can_id, CAN_Data_Union_t* can_data) {
 ////    tx_msg.RTR = CAN_RTR_Data;
 ////    tx_msg.DLC = 8;
 ////    
-////    // Ìî³äÔ­Ê¼Êı¾İ
+////    // å¡«å……åŸå§‹æ•°æ®
 ////    raw_can_data.data.raw_temp = htm440_data.raw_temperature;
 ////    raw_can_data.data.raw_humidity = htm440_data.raw_humidity;
 ////    raw_can_data.data.device_addr = htm440_data.device_addr;
@@ -378,15 +378,15 @@ void CAN_Send_ADC_Raw_Data(uint32_t can_id, CAN_Data_Union_t* can_data) {
 ////    raw_can_data.data.reserved[0] = 0x00;
 ////    raw_can_data.data.reserved[1] = 0x00;
 ////    
-////    // ¸´ÖÆ×Ö½Úµ½CANÏûÏ¢
+////    // å¤åˆ¶å­—èŠ‚åˆ°CANæ¶ˆæ¯
 ////    for(int i = 0; i < 8; i++) {
 ////        tx_msg.Data[i] = raw_can_data.bytes[i];
 ////    }
 ////    
-////    // ·¢ËÍCANÏûÏ¢
+////    // å‘é€CANæ¶ˆæ¯
 ////    CAN_SendMessage(&tx_msg);
 ////    
-////    // ¿ÉÑ¡£ºµ÷ÊÔÊä³ö
+////    // å¯é€‰ï¼šè°ƒè¯•è¾“å‡º
 ////    // Serial_SendString("HTM440 Raw CAN: Temp_raw=");
 ////    // Serial_SendNumber(htm440_data.raw_temperature);
 ////    // Serial_SendString(", Hum_raw=");
@@ -395,30 +395,30 @@ void CAN_Send_ADC_Raw_Data(uint32_t can_id, CAN_Data_Union_t* can_data) {
 ////}
 
 
-// Ìí¼ÓÁ÷Á¿¼ÆËãº¯Êı
+// æ·»åŠ æµé‡è®¡ç®—å‡½æ•°
 float ConvertCurrentToFlow(float current_ma) {
-    // Ê¹ÓÃ¹«Ê½: X = (I - 3.59) / 0.041
-    // ÆäÖĞ I ÊÇµçÁ÷(mA)£¬X ÊÇÁ÷Á¿
+    // ä½¿ç”¨å…¬å¼: X = (I - 3.59) / 0.041
+    // å…¶ä¸­ I æ˜¯ç”µæµ(mA)ï¼ŒX æ˜¯æµé‡
     float flow = (current_ma - 3.59f) / 0.041f;
     return flow;
 }
 
 
-// Ñ¹Á¦¼ÆËãº¯Êı
+// å‹åŠ›è®¡ç®—å‡½æ•°
 float ConvertCurrentToPressure(float current_ma) {
-    // Ê¹ÓÃ¹«Ê½: P = (9I - 52) / 16
-    // ÆäÖĞ I ÊÇµçÁ÷(mA)£¬P ÊÇÑ¹Á¦(bar)
+    // ä½¿ç”¨å…¬å¼: P = (9I - 52) / 16
+    // å…¶ä¸­ I æ˜¯ç”µæµ(mA)ï¼ŒP æ˜¯å‹åŠ›(bar)
     float pressure = (9.0f * current_ma - 52.0f) / 16.0f;
     return pressure;
 }
 
 
-// ·¢ËÍËùÓĞADCÔ­Ê¼Êı¾İ
+// å‘é€æ‰€æœ‰ADCåŸå§‹æ•°æ®
 void CAN_Send_All_ADC_Raw_Data(void) {
     CAN_Data_Union_t can_data;
     
     
-    // Ê¹ÓÃ¸´ºÏÂË²¨ºóµÄÊı¾İÌî³ä½á¹¹Ìå
+    // ä½¿ç”¨å¤åˆæ»¤æ³¢åçš„æ•°æ®å¡«å……ç»“æ„ä½“
     raw_adc_spi1_chip1.ain0 = filtered_adc_spi1_chip1_ain0;
     raw_adc_spi1_chip1.ain1 = filtered_adc_spi1_chip1_ain1;
     raw_adc_spi1_chip1.ain2 = filtered_adc_spi1_chip1_ain2;
@@ -436,40 +436,40 @@ void CAN_Send_All_ADC_Raw_Data(void) {
     
     
     
-    // ·¢ËÍSPI1µÚÒ»¸öĞ¾Æ¬µÄÔ­Ê¼Êı¾İ
+    // å‘é€SPI1ç¬¬ä¸€ä¸ªèŠ¯ç‰‡çš„åŸå§‹æ•°æ®
     can_data.channels = raw_adc_spi1_chip1;
     CAN_Send_ADC_Raw_Data(CAN_ID_SPI1_CHIP1_RAW, &can_data);
     Delay_ms(2);
     
-    // ·¢ËÍSPI1µÚ¶ş¸öĞ¾Æ¬µÄÔ­Ê¼Êı¾İ
+    // å‘é€SPI1ç¬¬äºŒä¸ªèŠ¯ç‰‡çš„åŸå§‹æ•°æ®
     can_data.channels = raw_adc_spi1_chip2;
     CAN_Send_ADC_Raw_Data(CAN_ID_SPI1_CHIP2_RAW, &can_data);
     Delay_ms(2);
     
-    // ·¢ËÍSPI2Ğ¾Æ¬µÄÔ­Ê¼Êı¾İ
+    // å‘é€SPI2èŠ¯ç‰‡çš„åŸå§‹æ•°æ®
     can_data.channels = raw_adc_spi2;
     CAN_Send_ADC_Raw_Data(CAN_ID_SPI2_RAW, &can_data);
 }
 uint16_t adc_value,a1,a2,a3,a4,adc_value1,adc_value2,adc_value3,adc_value4,adc_value5,adc_value6,adc_value7,adc_value8;
-// Ê¹ÓÃRead_ADS1118_Directº¯Êı¶ÁÈ¡ËùÓĞ´«¸ĞÆ÷Êı¾İ
+// ä½¿ç”¨Read_ADS1118_Directå‡½æ•°è¯»å–æ‰€æœ‰ä¼ æ„Ÿå™¨æ•°æ®
 void Read_ADS1118_Direct(void) {
     
     float voltage_mv, voltage_v;
     
     Serial_SendString_2("=== ADS1118 Sensor Data ===\r\n");
     
-//    // SPI1µÚÒ»¸öĞ¾Æ¬ (PA4Æ¬Ñ¡) - 4¸öÍ¨µÀ
+//    // SPI1ç¬¬ä¸€ä¸ªèŠ¯ç‰‡ (PA4ç‰‡é€‰) - 4ä¸ªé€šé“
     Serial_SendString_2(chip_configs[0].chip_name);
     Serial_SendString_2(": ");
     
     
     // AIN0: 4-20mA     adc8
     Serial_SendString_2("Config=0x");
-    Serial_SendHex_2(ADS1118_CONFIG_AIN0); // ´òÓ¡ÅäÖÃ¼Ä´æÆ÷Öµ
+    Serial_SendHex_2(ADS1118_CONFIG_AIN0); // æ‰“å°é…ç½®å¯„å­˜å™¨å€¼
     Serial_SendString_2(" ");
    // AIN0: 4-20mA
     a1 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN0);
-//    raw_adc_spi1_chip1.ain0 = adc_value;  // Ê¹ÓÃ½á¹¹Ìå´æ´¢Ô­Ê¼ADCÖµ
+//    raw_adc_spi1_chip1.ain0 = adc_value;  // ä½¿ç”¨ç»“æ„ä½“å­˜å‚¨åŸå§‹ADCå€¼
 //    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
 //    voltage_v = voltage_mv / 1000.0f;
 //    spi1_chip1_ain0_current = ConvertVoltageToCurrent_2V(voltage_v);
@@ -478,7 +478,7 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2("mA(");
 //    Serial_SendNumber_2(adc_value);
 //    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);  // Ìí¼ÓµçÑ¹ÏÔÊ¾£¬3Î»Ğ¡Êı
+//    Serial_SendFloat(voltage_v, 3);  // æ·»åŠ ç”µå‹æ˜¾ç¤ºï¼Œ3ä½å°æ•°
 //    Serial_SendString_2("V) ");
     Delay_ms(5); 
     
@@ -489,11 +489,11 @@ void Read_ADS1118_Direct(void) {
     a1 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN0);
     
     
-    // Ó¦ÓÃ¸´ºÏÂË²¨
+    // åº”ç”¨å¤åˆæ»¤æ³¢
     float comp_filtered_adc0 = apply_composite_filter(&comp_filter_spi1_chip1_ain0, (float)a1);
     filtered_adc_spi1_chip1_ain0 = (uint16_t)comp_filtered_adc0;
     
-    // Ö»·¢ËÍ6400-32000·¶Î§ÄÚµÄÖµ
+    // åªå‘é€6400-32000èŒƒå›´å†…çš„å€¼
     if(filtered_adc_spi1_chip1_ain0 >= 6400 && filtered_adc_spi1_chip1_ain0 <= 32000) {
         raw_adc_spi1_chip1.ain0 = filtered_adc_spi1_chip1_ain0;
         voltage_mv = filtered_adc_spi1_chip1_ain0 * ADC_CONVERSION_FACTOR;
@@ -512,7 +512,7 @@ void Read_ADS1118_Direct(void) {
         
        
     Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);  // Ìí¼ÓµçÑ¹ÏÔÊ¾£¬3Î»Ğ¡Êı
+    Serial_SendFloat(voltage_v, 3);  // æ·»åŠ ç”µå‹æ˜¾ç¤ºï¼Œ3ä½å°æ•°
     Serial_SendString_2("V) ");
     } else {
         Serial_SendString_2("AIN0:INVALID ");
@@ -521,11 +521,11 @@ void Read_ADS1118_Direct(void) {
     
     
     
- //   raw_adc_spi1_chip1.ain0 = a1;  // Ê¹ÓÃ½á¹¹Ìå´æ´¢Ô­Ê¼ADCÖµ
+ //   raw_adc_spi1_chip1.ain0 = a1;  // ä½¿ç”¨ç»“æ„ä½“å­˜å‚¨åŸå§‹ADCå€¼
 //    voltage_mv = a1 * ADC_CONVERSION_FACTOR;
 //    voltage_v = voltage_mv / 1000.0f;
 //    spi1_chip1_ain0_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    // ¼ÆËãÁ÷Á¿
+//    // è®¡ç®—æµé‡
 //float flow_rate = ConvertCurrentToFlow(spi1_chip1_ain0_current);
 
 //    Serial_SendString_2("AIN0:");
@@ -533,12 +533,12 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2("mA(");
 //    
 //    Serial_SendString_2("Flow:");
-//Serial_SendFloat(flow_rate, 2);  // Á÷Á¿ÏÔÊ¾£¬2Î»Ğ¡Êı
+//Serial_SendFloat(flow_rate, 2);  // æµé‡æ˜¾ç¤ºï¼Œ2ä½å°æ•°
 //Serial_SendString_2("cm/s ");
 //    
 //    Serial_SendNumber_2(a1);
 //    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);  // Ìí¼ÓµçÑ¹ÏÔÊ¾£¬3Î»Ğ¡Êı
+//    Serial_SendFloat(voltage_v, 3);  // æ·»åŠ ç”µå‹æ˜¾ç¤ºï¼Œ3ä½å°æ•°
 //    Serial_SendString_2("V) ");
     Delay_ms(5);
     
@@ -601,7 +601,7 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2("mA(");
 //    
 //     Serial_SendString_2("Flow1:");
-//Serial_SendFloat(flow_rate1, 2);  // Á÷Á¿ÏÔÊ¾£¬2Î»Ğ¡Êı
+//Serial_SendFloat(flow_rate1, 2);  // æµé‡æ˜¾ç¤ºï¼Œ2ä½å°æ•°
 //Serial_SendString_2("cm/s ");
 //    
 //    
@@ -612,7 +612,7 @@ void Read_ADS1118_Direct(void) {
     Delay_ms(5);
 //    
 
-    // AIN2: ÈÈµç×è   adc10
+    // AIN2: çƒ­ç”µé˜»   adc10
     a3 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN2);
 //    raw_adc_spi1_chip1.ain2 = adc_value;
 //    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
@@ -626,11 +626,11 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2(",");
 //    Serial_SendFloat(voltage_v, 3);
 //    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance1, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-//    Serial_SendString_2("¦¸) ");
+//    Serial_SendFloat(resistance1, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+//    Serial_SendString_2("Î©) ");
     Delay_ms(5);
 
-    // AIN2: ÈÈµç×è
+    // AIN2: çƒ­ç”µé˜»
     a3 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN2);
     
     float comp_filtered_adc2 = apply_composite_filter(&comp_filter_spi1_chip1_ain2, (float)a3);
@@ -653,8 +653,8 @@ void Read_ADS1118_Direct(void) {
     Serial_SendFloat(voltage_v, 3);
     Serial_SendString_2("V,");
         
-        Serial_SendFloat(resistance1, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-    Serial_SendString_2("¦¸) ");
+        Serial_SendFloat(resistance1, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+    Serial_SendString_2("Î©) ");
     } else {
         Serial_SendString_2("AIN2:INVALID ");
     }
@@ -666,19 +666,19 @@ void Read_ADS1118_Direct(void) {
 //    voltage_v = voltage_mv / 1000.0f;
 //    float resistance1 = CalculateNTCResistance_t3(voltage_v);
 //    spi1_chip1_ain2_temp = CalculateNTCTemperature(resistance1);
-//    Serial_SendString_2("AIN2: T3£º ");
+//    Serial_SendString_2("AIN2: T3ï¼š ");
 //    Serial_SendFloat(spi1_chip1_ain2_temp, 1);
 //    Serial_SendString_2("C(");
 //    Serial_SendNumber_2(a3);
 //    Serial_SendString_2(",");
 //    Serial_SendFloat(voltage_v, 3);
 //    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance1, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-//    Serial_SendString_2("¦¸) ");
+//    Serial_SendFloat(resistance1, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+//    Serial_SendString_2("Î©) ");
     Delay_ms(5);
 //    
 
-     // AIN3: ÈÈµç×è   adc11
+     // AIN3: çƒ­ç”µé˜»   adc11
     a4 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN3);
 //    raw_adc_spi1_chip1.ain3 = adc_value;
 //    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
@@ -692,15 +692,15 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2(",");
 //    Serial_SendFloat(voltage_v, 3);
 //    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance2, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-//    Serial_SendString_2("¦¸)\r\n");
+//    Serial_SendFloat(resistance2, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+//    Serial_SendString_2("Î©)\r\n");
     Delay_ms(5);
 
-    // AIN3: ÈÈµç×è
+    // AIN3: çƒ­ç”µé˜»
     a4 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN3);
     
     float comp_filtered_adc3 = apply_composite_filter(&comp_filter_spi1_chip1_ain3, (float)a4);
-    filtered_adc_spi1_chip2_ain3 = (uint16_t)comp_filtered_adc3;
+    filtered_adc_spi1_chip1_ain3 = (uint16_t)comp_filtered_adc3;
     
     if(filtered_adc_spi1_chip1_ain3 >= 6400 && filtered_adc_spi1_chip1_ain3 <= 32000) {
         raw_adc_spi1_chip1.ain3 = filtered_adc_spi1_chip1_ain3;
@@ -718,8 +718,8 @@ void Read_ADS1118_Direct(void) {
          Serial_SendString_2(",");
     Serial_SendFloat(voltage_v, 3);
     Serial_SendString_2("V,");
-           Serial_SendFloat(resistance2, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-    Serial_SendString_2("¦¸)\r\n");
+           Serial_SendFloat(resistance2, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+    Serial_SendString_2("Î©)\r\n");
         
     } else {
         Serial_SendString_2("AIN3:INVALID\r\n");
@@ -738,15 +738,15 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2(",");
 //    Serial_SendFloat(voltage_v, 3);
 //    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance2, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-//    Serial_SendString_2("¦¸)\r\n");
+//    Serial_SendFloat(resistance2, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+//    Serial_SendString_2("Î©)\r\n");
     Delay_ms(5);
     
     
     
     
     
-//    // SPI1µÚ¶ş¸öĞ¾Æ¬ (PA8Æ¬Ñ¡) - 4¸öÍ¨µÀ
+//    // SPI1ç¬¬äºŒä¸ªèŠ¯ç‰‡ (PA8ç‰‡é€‰) - 4ä¸ªé€šé“
     Serial_SendString_2(chip_configs[1].chip_name);
     Serial_SendString_2(": ");
 //    
@@ -805,7 +805,7 @@ void Read_ADS1118_Direct(void) {
 //    voltage_v = voltage_mv / 1000.0f;
 //    spi1_chip2_ain0_current = ConvertVoltageToCurrent_2V(voltage_v);
 //    
-//    // ¼ÆËãÑ¹Á¦
+//    // è®¡ç®—å‹åŠ›
 //float pressure_bar = ConvertCurrentToPressure(spi1_chip2_ain0_current);
 //    
 //    Serial_SendString_2("AIN0:");
@@ -875,7 +875,7 @@ void Read_ADS1118_Direct(void) {
 //    voltage_v = voltage_mv / 1000.0f;
 //    spi1_chip2_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
 //    
-//      // ¼ÆËãÑ¹Á¦
+//      // è®¡ç®—å‹åŠ›
 //float pressure_bar1 = ConvertCurrentToPressure(spi1_chip2_ain1_current);
 //    
 //    
@@ -944,7 +944,7 @@ void Read_ADS1118_Direct(void) {
 //    voltage_v = voltage_mv / 1000.0f;
 //    spi1_chip2_ain2_current = ConvertVoltageToCurrent_2V(voltage_v);
 //    
-//          // ¼ÆËãÑ¹Á¦
+//          // è®¡ç®—å‹åŠ›
 //float pressure_bar2 = ConvertCurrentToPressure(spi1_chip2_ain2_current);
 //    
 //    
@@ -965,7 +965,7 @@ void Read_ADS1118_Direct(void) {
     
 //     adc_value = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN3);
 //    Delay_ms(5);
-//      // AIN3: ÈÈµç×è   adc7
+//      // AIN3: çƒ­ç”µé˜»   adc7
     adc_value4 = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN3);
 //    raw_adc_spi1_chip2.ain3 = adc_value;
 //    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
@@ -979,11 +979,11 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2(",");
 //    Serial_SendFloat(voltage_v, 3);
 //    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance3, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-//    Serial_SendString_2("¦¸)\r\n");
+//    Serial_SendFloat(resistance3, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+//    Serial_SendString_2("Î©)\r\n");
     Delay_ms(5);
     
-    // AIN3: ÈÈµç×è
+    // AIN3: çƒ­ç”µé˜»
     adc_value4 = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN3);
     
     
@@ -991,13 +991,13 @@ void Read_ADS1118_Direct(void) {
     filtered_adc_spi1_chip2_ain3 = (uint16_t)comp_filtered_adc7;
     
     if(filtered_adc_spi1_chip2_ain3 >= 6400 && filtered_adc_spi1_chip2_ain3 <= 32000) {
-        raw_adc_spi1_chip1.ain3 = filtered_adc_spi1_chip2_ain3;
+        raw_adc_spi1_chip2.ain3 = filtered_adc_spi1_chip2_ain3;
         voltage_mv = filtered_adc_spi1_chip2_ain3 * ADC_CONVERSION_FACTOR;
         voltage_v = voltage_mv / 1000.0f;
         float resistance3 = CalculateNTCResistance(voltage_v);
         spi1_chip2_ain3_temp = CalculateNTCTemperature(resistance3);
         
-        Serial_SendString_2("AIN3:  T5£º ");
+        Serial_SendString_2("AIN3:  T5ï¼š ");
         Serial_SendFloat(spi1_chip2_ain3_temp, 1);
         Serial_SendString_2("C(ADC:");
         Serial_SendNumber_2(filtered_adc_spi1_chip2_ain3);
@@ -1006,8 +1006,8 @@ void Read_ADS1118_Direct(void) {
          Serial_SendString_2(",");
     Serial_SendFloat(voltage_v, 3);
     Serial_SendString_2("V,");
-           Serial_SendFloat(resistance3, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-    Serial_SendString_2("¦¸)\r\n");
+           Serial_SendFloat(resistance3, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+    Serial_SendString_2("Î©)\r\n");
         
     } else {
         Serial_SendString_2("AIN3:INVALID ");
@@ -1026,16 +1026,16 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2(",");
 //    Serial_SendFloat(voltage_v, 3);
 //    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance3, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-//    Serial_SendString_2("¦¸)\r\n");
+//    Serial_SendFloat(resistance3, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+//    Serial_SendString_2("Î©)\r\n");
     Delay_ms(5);
     
-    // SPI2Ğ¾Æ¬ - 4¸öÍ¨µÀ
+    // SPI2èŠ¯ç‰‡ - 4ä¸ªé€šé“
     Serial_SendString_2(chip_configs[2].chip_name);
     Serial_SendString_2(": ");
     
     
-       // AIN0: 0-10VµçÑ¹    adc0
+       // AIN0: 0-10Vç”µå‹    adc0
     adc_value5 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN0);
 //    raw_adc_spi2.ain0 = adc_value;
 //    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
@@ -1046,11 +1046,11 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2("V(");
 //    Serial_SendNumber_2(adc_value);
 //    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);  // ÏÔÊ¾ADS1118Êµ¼Ê²âÁ¿µÄµçÑ¹
+//    Serial_SendFloat(voltage_v, 3);  // æ˜¾ç¤ºADS1118å®é™…æµ‹é‡çš„ç”µå‹
 //    Serial_SendString_2("V) ");
     Delay_ms(5);
     
-    // AIN0: 0-10VµçÑ¹
+    // AIN0: 0-10Vç”µå‹
     adc_value5 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN0);
     
     float comp_filtered_adc8 = apply_composite_filter(&comp_filter_spi2_ain0, (float)adc_value5);
@@ -1069,7 +1069,7 @@ void Read_ADS1118_Direct(void) {
         Serial_SendString_2(") ");
         
         Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);  // ÏÔÊ¾ADS1118Êµ¼Ê²âÁ¿µÄµçÑ¹
+    Serial_SendFloat(voltage_v, 3);  // æ˜¾ç¤ºADS1118å®é™…æµ‹é‡çš„ç”µå‹
     Serial_SendString_2("V) ");
     } else {
         Serial_SendString_2("AIN0:INVALID ");
@@ -1085,7 +1085,7 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2("V(");
 //    Serial_SendNumber_2(adc_value);
 //    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);  // ÏÔÊ¾ADS1118Êµ¼Ê²âÁ¿µÄµçÑ¹
+//    Serial_SendFloat(voltage_v, 3);  // æ˜¾ç¤ºADS1118å®é™…æµ‹é‡çš„ç”µå‹
 //    Serial_SendString_2("V) ");
 //    Delay_ms(5);
     
@@ -1138,7 +1138,7 @@ void Read_ADS1118_Direct(void) {
 //    voltage_v = voltage_mv / 1000.0f;
 //    spi2_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
 //    
-//      // ¼ÆËãÑ¹Á¦
+//      // è®¡ç®—å‹åŠ›
 //float pressure_bar3 = ConvertCurrentToPressure(spi2_ain1_current);
 //    
 //    Serial_SendString_2("AIN1:");
@@ -1207,7 +1207,7 @@ void Read_ADS1118_Direct(void) {
 //    voltage_v = voltage_mv / 1000.0f;
 //    spi2_ain2_current = ConvertVoltageToCurrent_2V(voltage_v);
 //    
-//    // ¼ÆËãÑ¹Á¦
+//    // è®¡ç®—å‹åŠ›
 //    float pressure_bar4 = ConvertCurrentToPressure(spi2_ain2_current); 
 //   
 //    
@@ -1227,7 +1227,7 @@ void Read_ADS1118_Direct(void) {
     Delay_ms(5);
     
     
-       // AIN3: ÈÈµç×è    adc3
+       // AIN3: çƒ­ç”µé˜»    adc3
     adc_value8 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN3);
 //    raw_adc_spi2.ain3 = adc_value;
 //    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
@@ -1241,11 +1241,11 @@ void Read_ADS1118_Direct(void) {
 //    Serial_SendString_2(",");
 //    Serial_SendFloat(voltage_v, 3);
 //    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance4, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-//    Serial_SendString_2("¦¸)\r\n\r\n");
+//    Serial_SendFloat(resistance4, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+//    Serial_SendString_2("Î©)\r\n\r\n");
      Delay_ms(5);
     
-    // AIN3: ÈÈµç×è
+    // AIN3: çƒ­ç”µé˜»
     adc_value8 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN3);
     
     float comp_filtered_adc11 = apply_composite_filter(&comp_filter_spi2_ain3, (float)adc_value8);
@@ -1258,7 +1258,7 @@ void Read_ADS1118_Direct(void) {
         float resistance4 = CalculateNTCResistance(voltage_v);
         spi2_ain3_temp = CalculateNTCTemperature(resistance4);
         
-        Serial_SendString_2("AIN3:  T4£º ");
+        Serial_SendString_2("AIN3:  T4ï¼š ");
         Serial_SendFloat(spi2_ain3_temp, 1);
         Serial_SendString_2("C(ADC:");
         Serial_SendNumber_2(filtered_adc_spi2_ain3);
@@ -1267,8 +1267,8 @@ void Read_ADS1118_Direct(void) {
          Serial_SendString_2(",");
     Serial_SendFloat(voltage_v, 3);
     Serial_SendString_2("V,");
-           Serial_SendFloat(resistance4, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-    Serial_SendString_2("¦¸)\r\n");
+           Serial_SendFloat(resistance4, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+    Serial_SendString_2("Î©)\r\n");
         
     } else {
         Serial_SendString_2("AIN3:INVALID ");
@@ -1280,27 +1280,26 @@ void Read_ADS1118_Direct(void) {
 //    voltage_v = voltage_mv / 1000.0f;
 //    float resistance4 = CalculateNTCResistance_t1(voltage_v);
 //    spi2_ain3_temp = CalculateNTCTemperature(resistance4);
-//    Serial_SendString_2("AIN3: T1£º");
+//    Serial_SendString_2("AIN3: T1ï¼š");
 //    Serial_SendFloat(spi2_ain3_temp, 1);
 //    Serial_SendString_2("C(");
 //    Serial_SendNumber_2(adc_value);
 //    Serial_SendString_2(",");
 //    Serial_SendFloat(voltage_v, 3);
 //    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance4, 0);  // Ìí¼Óµç×èÖµÏÔÊ¾
-//    Serial_SendString_2("¦¸)\r\n\r\n");
+//    Serial_SendFloat(resistance4, 0);  // æ·»åŠ ç”µé˜»å€¼æ˜¾ç¤º
+//    Serial_SendString_2("Î©)\r\n\r\n");
      Delay_ms(5);
     
-    // ·¢ËÍËùÓĞÔ­Ê¼ADCÊı¾İµ½CAN
-    CAN_Send_All_ADC_Raw_Data();
+    // CAN uplink queued only after full sampling in main().
 }
 
 
-//// Ê±ĞòÕï¶Ïº¯Êı+++++++
+//// æ—¶åºè¯Šæ–­å‡½æ•°+++++++
 //void Diagnose_Timing_Issues(void) {
 //    Serial_SendString_2("=== Timing Diagnosis ===\r\n");
 //    
-//    // ²âÊÔÁ¬Ğø¶ÁÈ¡Í¬Ò»Í¨µÀ
+//    // æµ‹è¯•è¿ç»­è¯»å–åŒä¸€é€šé“
 //    Serial_SendString_2("Testing same channel consecutive reads:\r\n");
 //    for(int i = 0; i < 3; i++) {
 //        uint16_t adc_value = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN1);
@@ -1315,7 +1314,7 @@ void Read_ADS1118_Direct(void) {
 //        Delay_ms(5);
 //    }
 //    
-//    // ²âÊÔÍ¨µÀÇĞ»»
+//    // æµ‹è¯•é€šé“åˆ‡æ¢
 //    Serial_SendString_2("Testing channel switching:\r\n");
 //    for(int chan = 0; chan < 4; chan++) {
 //        u16 config = ADS1118_CONFIG_AIN0 + (chan << 12);
@@ -1341,36 +1340,36 @@ void Read_ADS1118_Direct(void) {
 ////        return;
 ////    }
 ////    
-//////     // Ã¿500ms³¢ÊÔÒ»´Î¶ÁÈ¡£¬¶ø²»ÊÇÃ¿´Î100msÈÎÎñ¶¼³¢ÊÔ
+//////     // æ¯500mså°è¯•ä¸€æ¬¡è¯»å–ï¼Œè€Œä¸æ˜¯æ¯æ¬¡100msä»»åŠ¡éƒ½å°è¯•
 //////    if((task_tim1.time_1ms - last_read_attempt) >= 500) {
 //////        last_read_attempt = task_tim1.time_1ms;
 ////    
-////    // ¼ì²éÊÇ·ñµ½´ï¶ÁÈ¡Ê±¼ä¼ä¸ô
+////    // æ£€æŸ¥æ˜¯å¦åˆ°è¾¾è¯»å–æ—¶é—´é—´éš”
 ////    if((task_tim1.time_1ms - last_htm440_read_time) >= htm440_read_interval) {
 ////        
-////        // µ÷ÓÃ·Ç×èÈû¶ÁÈ¡
+////        // è°ƒç”¨éé˜»å¡è¯»å–
 ////        ModbusMaster_Status status;
 ////        status = HTM440_Read_Temperature_Humidity(htm440_slave_addr, &htm440_data);
 ////        
 ////        if(status == MODBUS_MASTER_OK) {
-////            // ¶ÁÈ¡³É¹¦
+////            // è¯»å–æˆåŠŸ
 ////            htm440_data.last_read = task_tim1.time_1ms;
 ////            retry_count = 0;
 ////            last_htm440_read_time = task_tim1.time_1ms;
 ////            
-////            // ·¢ËÍÔ­Ê¼ÕûÊıÊı¾İµ½CAN
+////            // å‘é€åŸå§‹æ•´æ•°æ•°æ®åˆ°CAN
 ////            CAN_Send_HTM440_Raw_Data();
 ////        }
 ////        else if(status == MODBUS_MASTER_BUSY) {
-////            // »¹ÔÚµÈ´ıÏìÓ¦£¬²»¸üĞÂlast_htm440_read_time£¬ÏÂ´Î¼ÌĞøµ÷ÓÃ
+////            // è¿˜åœ¨ç­‰å¾…å“åº”ï¼Œä¸æ›´æ–°last_htm440_read_timeï¼Œä¸‹æ¬¡ç»§ç»­è°ƒç”¨
 ////            return;
 ////        }
 ////        else {
-////            // ¶ÁÈ¡Ê§°Ü
+////            // è¯»å–å¤±è´¥
 ////            retry_count++;
 ////            last_htm440_read_time = task_tim1.time_1ms;
 ////            
-////            // Èç¹ûÁ¬ĞøÊ§°Ü¶à´Î£¬³¢ÊÔÖØĞÂ¼ì²âÉè±¸µØÖ·
+////            // å¦‚æœè¿ç»­å¤±è´¥å¤šæ¬¡ï¼Œå°è¯•é‡æ–°æ£€æµ‹è®¾å¤‡åœ°å€
 ////            if(retry_count >= 3) {
 ////                uint8_t new_addr;
 ////                status = HTM440_Read_Device_Address(&new_addr);
@@ -1386,8 +1385,8 @@ void Read_ADS1118_Direct(void) {
 ////}
 
 
-//// ÎÂÊª¶È¶ÁÈ¡ÈÎÎñ
-//// ÔÚ func.c ÖĞĞŞ¸Ä HTM440_Task º¯Êı
+//// æ¸©æ¹¿åº¦è¯»å–ä»»åŠ¡
+//// åœ¨ func.c ä¸­ä¿®æ”¹ HTM440_Task å‡½æ•°
 //void HTM440_Task(void)
 //{
 //    static uint8_t retry_count = 0;
@@ -1396,46 +1395,46 @@ void Read_ADS1118_Direct(void) {
 //        return;
 //    }
 //    
-//    // ¼ì²éÊÇ·ñµ½´ï¶ÁÈ¡Ê±¼ä¼ä¸ô
+//    // æ£€æŸ¥æ˜¯å¦åˆ°è¾¾è¯»å–æ—¶é—´é—´éš”
 //    if((task_tim1.time_1ms - last_htm440_read_time) >= htm440_read_interval) {
 //        ModbusMaster_Status status;
 //        
-//        // ¶ÁÈ¡ÎÂÊª¶ÈÊı¾İ
+//        // è¯»å–æ¸©æ¹¿åº¦æ•°æ®
 //        status = HTM440_Read_Temperature_Humidity(htm440_slave_addr, &htm440_data);
 //        
 //        if(status == MODBUS_MASTER_OK && htm440_data.valid) {
-//            // ÉèÖÃÊ±¼ä´Á
+//            // è®¾ç½®æ—¶é—´æˆ³
 //            htm440_data.last_read = task_tim1.time_1ms;
 //            
-//            // ¶ÁÈ¡³É¹¦
+//            // è¯»å–æˆåŠŸ
 //            retry_count = 0;
 //            
-//            // ´òÓ¡ÎÂÊª¶ÈÊı¾İ
-////            Serial_SendString_2("HTM440: ÎÂ¶È=");
+//            // æ‰“å°æ¸©æ¹¿åº¦æ•°æ®
+////            Serial_SendString_2("HTM440: æ¸©åº¦=");
 ////            Serial_SendFloat(htm440_data.temperature, 1);
-////            Serial_SendString_2("C, Êª¶È=");
+////            Serial_SendString_2("C, æ¹¿åº¦=");
 ////            Serial_SendFloat(htm440_data.humidity, 1);
 ////            Serial_SendString_2("%\r\n");
 //            
 //        }
 //            else {
-//            // ¶ÁÈ¡Ê§°Ü
+//            // è¯»å–å¤±è´¥
 //            retry_count++;
-////            Serial_SendString_2("HTM440¶ÁÈ¡Ê§°Ü£¬×´Ì¬Âë: ");
+////            Serial_SendString_2("HTM440è¯»å–å¤±è´¥ï¼ŒçŠ¶æ€ç : ");
 ////            Serial_SendNumber_2(status);
-////            Serial_SendString_2(", ÖØÊÔ´ÎÊı: ");
+////            Serial_SendString_2(", é‡è¯•æ¬¡æ•°: ");
 ////            Serial_SendNumber_2(retry_count);
 ////            Serial_SendString_2("\r\n");
 //            
-//            // Èç¹ûÁ¬ĞøÊ§°Ü¶à´Î£¬³¢ÊÔÖØĞÂ¼ì²âÉè±¸µØÖ·
+//            // å¦‚æœè¿ç»­å¤±è´¥å¤šæ¬¡ï¼Œå°è¯•é‡æ–°æ£€æµ‹è®¾å¤‡åœ°å€
 //            if(retry_count >= 3) {
-////                Serial_SendString_2("³¢ÊÔÖØĞÂ¼ì²âÉè±¸µØÖ·...\r\n");
+////                Serial_SendString_2("å°è¯•é‡æ–°æ£€æµ‹è®¾å¤‡åœ°å€...\r\n");
 //                uint8_t new_addr;
 //                status = HTM440_Read_Device_Address(&new_addr);
 //                if(status == MODBUS_MASTER_OK && new_addr != 0) {
 //                    htm440_slave_addr = new_addr;
 //                    htm440_data.device_addr = new_addr;
-////                    Serial_SendString_2("·¢ÏÖĞÂÉè±¸µØÖ·: 0x");
+////                    Serial_SendString_2("å‘ç°æ–°è®¾å¤‡åœ°å€: 0x");
 ////                    Serial_SendHexByte_2(new_addr);
 ////                    Serial_SendString_2("\r\n");
 //                }
@@ -1443,27 +1442,27 @@ void Read_ADS1118_Direct(void) {
 //            }
 //        }
 //        
-//        // ¸üĞÂ×îºó¶ÁÈ¡Ê±¼ä
+//        // æ›´æ–°æœ€åè¯»å–æ—¶é—´
 //        last_htm440_read_time = task_tim1.time_1ms;
 //    }
 //}
-// ³õÊ¼»¯ÎÂÊª¶È´«¸ĞÆ÷
+// åˆå§‹åŒ–æ¸©æ¹¿åº¦ä¼ æ„Ÿå™¨
 void HTM440_Init(void)
 {
     ModbusMaster_Init();
     
-    // ³¢ÊÔ¶ÁÈ¡Éè±¸µØÖ·
+    // å°è¯•è¯»å–è®¾å¤‡åœ°å€
     uint8_t addr;
     ModbusMaster_Status status = HTM440_Read_Device_Address(&addr);
     
     if(status == MODBUS_MASTER_OK && addr != 0) {
         htm440_slave_addr = addr;
         htm440_data.device_addr = addr;
-//        Serial_SendString_2("HTM440Éè±¸µØÖ·: 0x");
+//        Serial_SendString_2("HTM440è®¾å¤‡åœ°å€: 0x");
 //        Serial_SendHexByte_2(addr);
 //        Serial_SendString_2("\r\n");
     } else {
-//        Serial_SendString_2("Ê¹ÓÃÄ¬ÈÏÉè±¸µØÖ·: 0x");
+//        Serial_SendString_2("ä½¿ç”¨é»˜è®¤è®¾å¤‡åœ°å€: 0x");
 //        Serial_SendHexByte_2(htm440_slave_addr);
 //        Serial_SendString_2("\r\n");
     }
@@ -1471,59 +1470,59 @@ void HTM440_Init(void)
     htm440_enabled = 1;
     last_htm440_read_time = task_tim1.time_1ms;
     
-//    Serial_SendString_2("HTM440ÎÂÊª¶È´«¸ĞÆ÷³õÊ¼»¯Íê³É\r\n");
+//    Serial_SendString_2("HTM440æ¸©æ¹¿åº¦ä¼ æ„Ÿå™¨åˆå§‹åŒ–å®Œæˆ\r\n");
 }
 
-// ÉèÖÃÎÂÊª¶È¶ÁÈ¡¼ä¸ô£¨µ¥Î»£ºms£©
+// è®¾ç½®æ¸©æ¹¿åº¦è¯»å–é—´éš”ï¼ˆå•ä½ï¼šmsï¼‰
 void HTM440_SetReadInterval(uint32_t interval_ms)
 {
     htm440_read_interval = interval_ms;
-//    Serial_SendString_2("ÉèÖÃÎÂÊª¶È¶ÁÈ¡¼ä¸ô: ");
+//    Serial_SendString_2("è®¾ç½®æ¸©æ¹¿åº¦è¯»å–é—´éš”: ");
 //    Serial_SendNumber_2(interval_ms);
 //    Serial_SendString_2("ms\r\n");
 }
 
-// ÆôÓÃ/½ûÓÃÎÂÊª¶È¶ÁÈ¡
+// å¯ç”¨/ç¦ç”¨æ¸©æ¹¿åº¦è¯»å–
 void HTM440_Enable(uint8_t enable)
 {
     htm440_enabled = enable;
-//    Serial_SendString_2(enable ? "ÆôÓÃÎÂÊª¶È¶ÁÈ¡\r\n" : "½ûÓÃÎÂÊª¶È¶ÁÈ¡\r\n");
+//    Serial_SendString_2(enable ? "å¯ç”¨æ¸©æ¹¿åº¦è¯»å–\r\n" : "ç¦ç”¨æ¸©æ¹¿åº¦è¯»å–\r\n");
 }
 
-// ÊÖ¶¯¶ÁÈ¡ÎÂÊª¶È£¨¿ÉÓÃÓÚµ÷ÊÔ£©
+// æ‰‹åŠ¨è¯»å–æ¸©æ¹¿åº¦ï¼ˆå¯ç”¨äºè°ƒè¯•ï¼‰
 void HTM440_ManualRead(void)
 {
     if(htm440_enabled) {
-        last_htm440_read_time = 0;  // Á¢¼´´¥·¢¶ÁÈ¡
-//        Serial_SendString_2("ÊÖ¶¯´¥·¢ÎÂÊª¶È¶ÁÈ¡...\r\n");
+        last_htm440_read_time = 0;  // ç«‹å³è§¦å‘è¯»å–
+//        Serial_SendString_2("æ‰‹åŠ¨è§¦å‘æ¸©æ¹¿åº¦è¯»å–...\r\n");
     }
 }
 
-// ´òÓ¡µ±Ç°ÎÂÊª¶ÈÊı¾İ
+// æ‰“å°å½“å‰æ¸©æ¹¿åº¦æ•°æ®
 void HTM440_PrintData(void)
 {
     if(htm440_data.valid) {
-//        Serial_SendString_2("µ±Ç°ÎÂÊª¶ÈÊı¾İ:\r\n");
-//        Serial_SendString_2("  Éè±¸µØÖ·: 0x");
+//        Serial_SendString_2("å½“å‰æ¸©æ¹¿åº¦æ•°æ®:\r\n");
+//        Serial_SendString_2("  è®¾å¤‡åœ°å€: 0x");
 //        Serial_SendHexByte_2(htm440_data.device_addr);
 //        Serial_SendString_2("\r\n");
-//        Serial_SendString_2("  ÎÂ¶È: ");
+//        Serial_SendString_2("  æ¸©åº¦: ");
 //        Serial_SendFloat(htm440_data.temperature, 1);
-//        Serial_SendString_2("¡ãC\r\n");
-//        Serial_SendString_2("  Êª¶È: ");
+//        Serial_SendString_2("Â°C\r\n");
+//        Serial_SendString_2("  æ¹¿åº¦: ");
 //        Serial_SendFloat(htm440_data.humidity, 1);
 //        Serial_SendString_2("%\r\n");
-//        Serial_SendString_2("  ÉÏ´Î¶ÁÈ¡Ê±¼ä: ");
+//        Serial_SendString_2("  ä¸Šæ¬¡è¯»å–æ—¶é—´: ");
 //        Serial_SendNumber_2(task_tim1.time_1ms - htm440_data.last_read);
-//        Serial_SendString_2("msÇ°\r\n");
+//        Serial_SendString_2("mså‰\r\n");
     } else {
-//        Serial_SendString_2("ÎÂÊª¶ÈÊı¾İÎŞĞ§»òÎ´¶ÁÈ¡\r\n");
+//        Serial_SendString_2("æ¸©æ¹¿åº¦æ•°æ®æ— æ•ˆæˆ–æœªè¯»å–\r\n");
     }
 }
 
 
 
-// ¶¨Ê±Æ÷ÈÎÎñ½á¹¹
+// å®šæ—¶å™¨ä»»åŠ¡ç»“æ„
 typedef struct {
     uint16_t time_1ms;
     uint16_t time_2ms;
@@ -1537,7 +1536,7 @@ typedef struct {
 } Task_loop;
 Task_loop task_tim = {0, 0, 0, 0, 0, 0, 0, 0,0};
 
-// ¶¨Ê±Æ÷3³õÊ¼»¯
+// å®šæ—¶å™¨3åˆå§‹åŒ–
 void TIM3_Int_Init(uint16_t arr, uint16_t psc) {
     TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
     NVIC_InitTypeDef NVIC_InitStructure;
@@ -1561,31 +1560,31 @@ void TIM3_Int_Init(uint16_t arr, uint16_t psc) {
     TIM_Cmd(TIM3, ENABLE);
 }
 
-// ÏµÍ³Ê±¼ä´Á
+// ç³»ç»Ÿæ—¶é—´æˆ³
 volatile uint32_t systemTick2 = 0;
 
-// 1msÈÎÎñ
+// 1msä»»åŠ¡
 void task_1ms(void) {
     systemTick2++;
     task_tim1.time_1ms++;
   
 }
 
-// 2msÈÎÎñ
+// 2msä»»åŠ¡
 void task_2ms(void) {
-    //LED1_Process(); // ¸ù¾İĞèÒªÆôÓÃ
+    //LED1_Process(); // æ ¹æ®éœ€è¦å¯ç”¨
 //     HTM440_Task();
 }
 
-// 5msÈÎÎñ - Ê¹ÓÃRead_ADS1118_Direct¶ÁÈ¡´«¸ĞÆ÷
+// 5msä»»åŠ¡ - ä½¿ç”¨Read_ADS1118_Directè¯»å–ä¼ æ„Ÿå™¨
 void task_5ms(void) {
 //    Read_ADS1118_Direct();
 //    CAN_Send_All_ADC_Raw_Data();
 }
 
-// 10msÈÎÎñ - CANÍ¨ĞÅ´¦Àí
+// 10msä»»åŠ¡ - CANé€šä¿¡å¤„ç†
 void task_10ms(void) {
-////    // CAN½ÓÊÕ´¦Àí
+////    // CANæ¥æ”¶å¤„ç†
     if(can_rx_msg.len > 0) {
 ////        Serial_SendString("CAN message received: ID=0x");
 ////        Serial_SendHex(can_rx_msg.id);
@@ -1596,40 +1595,39 @@ void task_10ms(void) {
         }
 ////        Serial_SendString("\r\n");
         
-        // ´¦ÀíÍê³ÉºóÇå¿ÕÏûÏ¢
+        // å¤„ç†å®Œæˆåæ¸…ç©ºæ¶ˆæ¯
         can_rx_msg.len = 0;
     }
 }
 
-// 20msÈÎÎñ
+// 20msä»»åŠ¡
 void task_20ms(void) {
-    // ¿ÕÈÎÎñ
+    // ç©ºä»»åŠ¡
 }
 
-// 50msÈÎÎñ
+// 50msä»»åŠ¡
 void task_50ms(void) {
 //    Diagnose_Timing_Issues();
-    // ¿ÕÈÎÎñ
+    // ç©ºä»»åŠ¡
 }
 
-// 100msÈÎÎñ
+// 100msä»»åŠ¡
 void task_100ms(void) {
-    // ¿ÕÈÎÎñ£¨Êı¾İÒÑ¾­ÔÚ5msÈÎÎñÖĞ´òÓ¡ºÍ·¢ËÍ£©
+    // ç©ºä»»åŠ¡ï¼ˆæ•°æ®å·²ç»åœ¨5msä»»åŠ¡ä¸­æ‰“å°å’Œå‘é€ï¼‰
     
-    // Ã¿200ms¼ì²éÒ»´ÎÎÂÊª¶È¶ÁÈ¡
-        // ×¢Òâ£ºHTM440_Taskº¯ÊıÄÚ²¿ÓĞ2ÃëµÄÊ±¼ä¼ä¸ô¼ì²é
+    // æ¯200msæ£€æŸ¥ä¸€æ¬¡æ¸©æ¹¿åº¦è¯»å–
+        // æ³¨æ„ï¼šHTM440_Taskå‡½æ•°å†…éƒ¨æœ‰2ç§’çš„æ—¶é—´é—´éš”æ£€æŸ¥
 ////        HTM440_Task();
 //    HTM440_ManualRead();
-//           Serial_SendString_2("  Êª¶È: ");
+//           Serial_SendString_2("  æ¹¿åº¦: ");
 }
 
-// 200msÈÎÎñ
+// 200msä»»åŠ¡
 void task_200ms(void) {
     Read_ADS1118_Direct();
-    CAN_Send_All_ADC_Raw_Data();
 //     HTM440_Task();
     
-    // ¿ÕÈÎÎñ
+    // ç©ºä»»åŠ¡
     
 }
 
@@ -1637,12 +1635,12 @@ void task_1000ms(void) {
 
 //     HTM440_Task();
     
-    // ¿ÕÈÎÎñ
+    // ç©ºä»»åŠ¡
     
 }
 
 
-// ¿ØÖÆÈÎÎñµ÷¶È
+// æ§åˆ¶ä»»åŠ¡è°ƒåº¦
 void Control_Task(void) {
     task_tim.time_1ms++;
     task_tim.time_2ms++;
@@ -1701,7 +1699,7 @@ void Control_Task(void) {
 }
 
 uint8_t timer3_flag = 0;
-// ¶¨Ê±Æ÷3ÖĞ¶Ï·şÎñ³ÌĞò
+// å®šæ—¶å™¨3ä¸­æ–­æœåŠ¡ç¨‹åº
 ////void TIM3_IRQHandler(void) {
 ////    if(TIM_GetITStatus(TIM3, TIM_IT_Update) != RESET) {
 ////        timer3_flag = 1;
@@ -1711,22 +1709,22 @@ uint8_t timer3_flag = 0;
 ////}
 
 
-// ¼ò»¯TIM3ÖĞ¶Ï£¬Ö»¸üĞÂÊ±¼ä
+// ç®€åŒ–TIM3ä¸­æ–­ï¼Œåªæ›´æ–°æ—¶é—´
 void TIM3_IRQHandler(void) {
     if(TIM_GetITStatus(TIM3, TIM_IT_Update) != RESET) {
-        task_tim1.time_1ms++;  // Ö»¸üĞÂÊ±¼ä
+        task_tim1.time_1ms++;  // åªæ›´æ–°æ—¶é—´
         TIM_ClearITPendingBit(TIM3, TIM_IT_Update);
     }
 }
 
 
-// ¸Ä½øµÄ³õÊ¼»¯º¯Êı£¬Ìí¼Ó´íÎó¼ì²é
+// æ”¹è¿›çš„åˆå§‹åŒ–å‡½æ•°ï¼Œæ·»åŠ é”™è¯¯æ£€æŸ¥
 void Initialize_Composite_Filter_Structs(void) {
-    float sampling_frequency = 1000.0f; // ¸ù¾İÊµ¼Ê¶¨Ê±Æ÷ÆµÂÊµ÷Õû
+    float sampling_frequency = 1000.0f; // æ ¹æ®å®é™…å®šæ—¶å™¨é¢‘ç‡è°ƒæ•´
     int success_count = 0;
     int total_filters = 12;
     
-    // ³õÊ¼»¯ËùÓĞÂË²¨Æ÷
+    // åˆå§‹åŒ–æ‰€æœ‰æ»¤æ³¢å™¨
     if(init_composite_filter(&comp_filter_spi1_chip1_ain0, sampling_frequency, 10)) success_count++;
     if(init_composite_filter(&comp_filter_spi1_chip1_ain1, sampling_frequency, 10)) success_count++;
     if(init_composite_filter(&comp_filter_spi1_chip1_ain2, sampling_frequency, 10)) success_count++;
@@ -1754,23 +1752,23 @@ void Initialize_Composite_Filter_Structs(void) {
 }
 
 
-//// ³õÊ¼»¯¸´ºÏÂË²¨½á¹¹Ìå
+//// åˆå§‹åŒ–å¤åˆæ»¤æ³¢ç»“æ„ä½“
 //void Initialize_Composite_Filter_Structs(void) {
-//    float sampling_frequency = 1000.0f; // ¼ÙÉè²ÉÑùÆµÂÊÎª1kHz
+//    float sampling_frequency = 1000.0f; // å‡è®¾é‡‡æ ·é¢‘ç‡ä¸º1kHz
 //    
-//    // SPI1µÚÒ»¸öĞ¾Æ¬
+//    // SPI1ç¬¬ä¸€ä¸ªèŠ¯ç‰‡
 //    init_composite_filter(&comp_filter_spi1_chip1_ain0, sampling_frequency, 10);
 //    init_composite_filter(&comp_filter_spi1_chip1_ain1, sampling_frequency, 10);
 //    init_composite_filter(&comp_filter_spi1_chip1_ain2, sampling_frequency, 10);
 //    init_composite_filter(&comp_filter_spi1_chip1_ain3, sampling_frequency, 10);
 //    
-//    // SPI1µÚ¶ş¸öĞ¾Æ¬
+//    // SPI1ç¬¬äºŒä¸ªèŠ¯ç‰‡
 //    init_composite_filter(&comp_filter_spi1_chip2_ain0, sampling_frequency, 10);
 //    init_composite_filter(&comp_filter_spi1_chip2_ain1, sampling_frequency, 10);
 //    init_composite_filter(&comp_filter_spi1_chip2_ain2, sampling_frequency, 10);
 //    init_composite_filter(&comp_filter_spi1_chip2_ain3, sampling_frequency, 10);
 //    
-//    // SPI2Ğ¾Æ¬
+//    // SPI2èŠ¯ç‰‡
 //    init_composite_filter(&comp_filter_spi2_ain0, sampling_frequency, 10);
 //    init_composite_filter(&comp_filter_spi2_ain1, sampling_frequency, 10);
 //    init_composite_filter(&comp_filter_spi2_ain2, sampling_frequency, 10);
