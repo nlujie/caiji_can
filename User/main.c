@@ -18,7 +18,7 @@
 #include "func.h"
 #include "modbus_rtu_master.h"
 /* Dedicated diagnostic image: isolate CAN test from ADC/Modbus tasks. */
-#include "can_loopback_selftest.h"
+#include "can_uplink.h"
 
 // 全局变量：系统时间戳
 extern volatile uint32_t systemTick2;
@@ -313,12 +313,7 @@ int main(void)
 {  
    SystemInit();
 
-    /* Execute CAN1 self-test once after reset; inspect Keil Watch or USART1.
-       Never start the original production tasks in this diagnostic firmware. */
-    CAN_SelfTest_Run();
-    while (1) { /* Halt here with PASS/FAIL variables preserved. */ }
-
-    SysTick_Init();
+SysTick_Init();
     
     // 检查看门狗复位
  ////   Check_IWDG_Reset();
@@ -363,7 +358,7 @@ int main(void)
 ////    
 //// 
 //// 
-        CAN_Module_Init();
+        CAN_Uplink_Init();
 
 uint16_t val;
         float value;
@@ -422,6 +417,7 @@ uint16_t val;
         if(current_time - last_200ms >= 200) {
             last_200ms = current_time;
             task_200ms();
+            CAN_Uplink_QueueLatest();
         }
         
         
@@ -429,7 +425,8 @@ uint16_t val;
         ////Read_ADS1118_Direct();
         
          // 短暂延时
-        Delay_us(1); // 每hao秒读取一次
+        CAN_Uplink_Service(task_tim1.time_1ms);
+         Delay_us(1); // 每hao秒读取一次
     
 	}
 }
