@@ -1,0 +1,195 @@
+#include "dr154_dtu.h"
+#include "stm32f10x_usart.h"
+#include "stm32f10x_gpio.h"
+#include "stm32f10x_rcc.h"
+#include "misc.h"
+#include "delay.h"
+#include "serial.h"
+// 接收缓冲区
+static uint8_t rx_buf[DR154_RX_BUF_SIZE];
+static uint16_t rx_index = 0;
+static volatile uint8_t rx_complete = 0;
+
+// 声明外部函数（在main.c中实现）
+extern uint32_t GetTick(void);
+// DTU句柄
+static DR154_Handle_t dtu = {
+    .state = DR154_STATE_DISCONNECTED,
+    .signal_quality = 0,
+    .net_status = 0,
+    .last_heartbeat = 0
+};
+
+// 私有函数声明
+static void DR154_Send_Command(const char *cmd);
+static uint8_t DR154_Wait_Response(const char *expected, uint32_t timeout);
+static void DR154_Parse_Response(uint8_t *data);
+
+// 初始化DTU模块
+void DR154_Init(void) {
+    // 初始化串口1(已通过CubeMX配置)
+    Serial_Init();
+    // 配置NVIC中断优先级等
+    
+    // 复位模块
+  //  DR154_Reset();
+    
+    // 等待模块启动(根据模块实际启动时间调整)
+    Delay_ms(8000);
+    
+    // 检查模块响应
+    DR154_Send_Command("AT\r\n");
+    if (DR154_Wait_Response("OK", 2000)) {
+        // 关闭回显(可选)
+        DR154_Send_Command("ATE0\r\n");
+        DR154_Wait_Response("OK", 500);
+        
+        // 查询信号质量
+        DR154_Send_Command("AT+CSQ\r\n");
+        DR154_Wait_Response("OK", 1000);
+        
+        // 查询网络状态
+        DR154_Send_Command("AT+CREG?\r\n");
+        DR154_Wait_Response("OK", 1000);
+    }
+}
+/*
+// 硬件复位模块
+void DR154_Reset(void) {
+    // 如果连接了RST引脚
+    GPIO_ResetBits(GPIOC, GPIO_Pin_13);
+    Delay_ms(100);
+    GPIO_SetBits(GPIOC, GPIO_Pin_13);
+    Delay_ms(100);
+    GPIO_ResetBits(GPIOC, GPIO_Pin_13);
+}
+*/
+// 检查连接状态
+uint8_t DR154_Check_Connection(void) {
+    DR154_Send_Command("AT+ZWSTATE?\r\n");
+    if (DR154_Wait_Response("+ZWSTATE: CONNECTED", 2000)) {
+        dtu.state = DR154_STATE_CONNECTED;
+        return 1;
+    }
+    dtu.state = DR154_STATE_DISCONNECTED;
+    return 0;
+}
+
+// 发送数据到服务器
+void DR154_Send_Data(uint8_t *data, uint16_t len) {
+    char header[32];
+    
+    // 构造数据头: AT+ZWSEND=<长度>
+    snprintf(header, sizeof(header), "AT+ZWSEND=%d\r\n", len);
+    DR154_Send_Command(header);
+    
+    // 等待模块准备好接收数据
+    if (DR154_Wait_Response(">", 1000)) {
+        // 发送实际数据
+        for (uint16_t i = 0; i < len; i++) {
+            USART_SendData(USART1, data[i]);
+            while (USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET);
+        }
+        
+        // 等待发送完成确认
+        DR154_Wait_Response("+ZWSEND: OK", 2000);
+    }
+}
+
+// 处理接收数据
+void DR154_Process(void) {
+    if (rx_complete) {
+        DR154_Parse_Response(rx_buf);
+        rx_index = 0;
+        rx_complete = 0;
+    }
+    
+    // 定期检查连接状态(约30秒一次)
+    static uint32_t last_check = 0;
+    if (GetTick() - last_check > 30000) {
+        DR154_Check_Connection();
+        last_check = GetTick();
+    }
+}
+
+// 发送AT命令
+static void DR154_Send_Command(const char *cmd) {
+    while (*cmd) {
+        USART_SendData(USART1, *cmd++);
+        while (USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET);
+    }
+}
+
+// 等待响应
+static uint8_t DR154_Wait_Response(const char *expected, uint32_t timeout) {
+    uint32_t start = GetTick();
+    rx_complete = 0;
+    
+    while (GetTick() - start < timeout) {
+        if (rx_complete) {
+            if (strstr((char*)rx_buf, expected) != NULL) {
+                return 1;
+            }
+            rx_index = 0;
+            rx_complete = 0;
+        }
+    }
+    return 0;
+}
+
+// 解析响应数据
+static void DR154_Parse_Response(uint8_t *data) {
+    // 1. 检查网络数据
+    if (strstr((char*)data, "+ZWURC: RECV")) {
+        uint8_t conn_id;
+        uint16_t data_len;
+        sscanf((char*)data, "+ZWURC: RECV,%hhu,%hu", &conn_id, &data_len);
+        
+        // 定位实际数据开始位置
+        uint8_t *payload = strchr((char*)data, '\n') + 1;
+        
+        // 在这里处理接收到的数据
+    }
+    // 2. 检查信号质量
+    else if (strstr((char*)data, "+CSQ:")) {
+        sscanf((char*)data, "+CSQ:%hhu", &dtu.signal_quality);
+    }
+    // 3. 检查网络注册状态
+    else if (strstr((char*)data, "+CREG:")) {
+        uint8_t n, stat;
+        sscanf((char*)data, "+CREG:%hhu,%hhu", &n, &stat);
+        dtu.net_status = stat;
+    }
+    // 4. 检查连接状态变化
+    else if (strstr((char*)data, "+ZWSTATE:")) {
+        if (strstr((char*)data, "CONNECTED")) {
+            dtu.state = DR154_STATE_CONNECTED;
+        } else {
+            dtu.state = DR154_STATE_DISCONNECTED;
+        }
+    }
+}
+/*
+// USART1中断处理函数
+void USART1_IRQHandler(void) {
+    if (USART_GetITStatus(USART1, USART_IT_RXNE) != RESET) {
+        uint8_t ch = USART_ReceiveData(USART1);
+        
+        // 存储接收到的字符
+        if (rx_index < DR154_RX_BUF_SIZE - 1) {
+            rx_buf[rx_index++] = ch;
+        }
+        
+        // 检测到结束符(DR154使用\r\n结尾)
+        if (ch == '\n' && rx_index > 1 && rx_buf[rx_index-2] == '\r') {
+            rx_buf[rx_index] = '\0'; // 添加字符串结束符
+            rx_complete = 1;         // 设置完成标志
+        }
+        
+        // 防止缓冲区溢出
+        if (rx_index >= DR154_RX_BUF_SIZE - 1) {
+            rx_index = 0;
+        }
+    }
+}
+*/

@@ -1,0 +1,39 @@
+# Keil uVision build outputs
+Objects/
+Listings/
+*.o
+*.d
+*.crf
+*.axf
+*.hex
+*.bin
+*.elf
+*.map
+*.lst
+*.htm
+*.iex
+*.sct
+*.build_log.htm
+*.lnp
+*.dep
+*.plg
+*.tra
+
+# Keil local user/session files (contain machine-specific paths)
+*.uvguix.*
+*.uvoptx
+*.uvguix
+EventRecorderStub.scvd
+
+# Debug logs & backups
+JLinkLog.txt
+JLinkSettings.ini
+*.bak
+*.tmp
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
