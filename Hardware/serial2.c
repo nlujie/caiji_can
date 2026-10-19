@@ -5,48 +5,48 @@
 #include "func.h"
 #include "serial.h"
 
-// ½ÓÊÕ»º³åÇø£¨ÖĞ¶Ï½ÓÊÕ£©
+// æ¥æ”¶ç¼“å†²åŒºï¼ˆä¸­æ–­æ¥æ”¶ï¼‰
 #define RX_BUFFER_SIZE_3 128
 uint8_t rx_buffer_3[RX_BUFFER_SIZE_3];
 volatile uint16_t rx_index_3 = 0;
 volatile uint8_t rx_complete_3 = 0;
 
-// ·¢ËÍ»º³åÇø£¨DMA·¢ËÍ£©
+// å‘é€ç¼“å†²åŒºï¼ˆDMAå‘é€ï¼‰
 #define TX_BUFFER_SIZE_3 128
 uint8_t tx_buffer_3[TX_BUFFER_SIZE_3];
-volatile uint8_t tx_busy_3 = 0; // DMA·¢ËÍÃ¦±êÖ¾
+volatile uint8_t tx_busy_3 = 0; // DMAå‘é€å¿™æ ‡å¿—
 
-// Ìí¼Ó Modbus Ö÷Õ¾½ÓÊÕÍê³É±êÖ¾£¨ÔÚserial.cÖĞ¶¨Òå£©
+// æ·»åŠ  Modbus ä¸»ç«™æ¥æ”¶å®Œæˆæ ‡å¿—ï¼ˆåœ¨serial.cä¸­å®šä¹‰ï¼‰
 volatile uint8_t modbus_rx_complete = 0;
 
 
-// DMA·¢ËÍÅäÖÃ
+// DMAå‘é€é…ç½®
 void DMA_TX_Configuration_USART3(void)
 {
     DMA_InitTypeDef DMA_InitStructure;
     
-    // ¿ªÆôDMAÊ±ÖÓ
+    // å¼€å¯DMAæ—¶é’Ÿ
     RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
     
-    // ÅäÖÃDMA1Í¨µÀ2 (USART3_TX)
+    // é…ç½®DMA1é€šé“2 (USART3_TX)
     DMA_DeInit(DMA1_Channel2);
     DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&(USART3->DR);
     DMA_InitStructure.DMA_MemoryBaseAddr = (uint32_t)tx_buffer_3;
-    DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST; // ÄÚ´æµ½ÍâÉè
-    DMA_InitStructure.DMA_BufferSize = 0; // ³õÊ¼Îª0
+    DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST; // å†…å­˜åˆ°å¤–è®¾
+    DMA_InitStructure.DMA_BufferSize = 0; // åˆå§‹ä¸º0
     DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
     DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
     DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
     DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
-    DMA_InitStructure.DMA_Mode = DMA_Mode_Normal; // Õı³£Ä£Ê½£¨·ÇÑ­»·£©
+    DMA_InitStructure.DMA_Mode = DMA_Mode_Normal; // æ­£å¸¸æ¨¡å¼ï¼ˆéå¾ªç¯ï¼‰
     DMA_InitStructure.DMA_Priority = DMA_Priority_High;
     DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
     DMA_Init(DMA1_Channel2, &DMA_InitStructure);
     
-    // ÅäÖÃDMA·¢ËÍÍê³ÉÖĞ¶Ï
+    // é…ç½®DMAå‘é€å®Œæˆä¸­æ–­
     DMA_ITConfig(DMA1_Channel2, DMA_IT_TC, ENABLE);
     
-    // DMA·¢ËÍÖĞ¶ÏÅäÖÃ
+    // DMAå‘é€ä¸­æ–­é…ç½®
     NVIC_InitTypeDef NVIC_InitStructure;
     NVIC_InitStructure.NVIC_IRQChannel = DMA1_Channel2_IRQn;
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
@@ -62,13 +62,13 @@ void Serial_Init_2()
     
     GPIO_InitTypeDef GPIO_InitStructure;
     
-    // TXÒı½ÅÅäÖÃ
+    // TXå¼•è„šé…ç½®
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
     
-    // RXÒı½ÅÅäÖÃ
+    // RXå¼•è„šé…ç½®
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -83,15 +83,15 @@ void Serial_Init_2()
     USART_InitStructure.USART_WordLength = USART_WordLength_8b;
     USART_Init(USART3, &USART_InitStructure);
     
-    // ÅäÖÃ½ÓÊÕÖĞ¶Ï£¨RXNEÖĞ¶Ï£©
+    // é…ç½®æ¥æ”¶ä¸­æ–­ï¼ˆRXNEä¸­æ–­ï¼‰
     USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
     
-    // ÅäÖÃ¿ÕÏĞÖĞ¶Ï£¨ÓÃÓÚ¼ì²âÖ¡½áÊø£©
+    // é…ç½®ç©ºé—²ä¸­æ–­ï¼ˆç”¨äºæ£€æµ‹å¸§ç»“æŸï¼‰
     USART_ITConfig(USART3, USART_IT_IDLE, ENABLE);
     
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
     
-    // USART3ÖĞ¶ÏÅäÖÃ
+    // USART3ä¸­æ–­é…ç½®
     NVIC_InitTypeDef NVIC_InitStructure;
     NVIC_InitStructure.NVIC_IRQChannel = USART3_IRQn;
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
@@ -99,48 +99,48 @@ void Serial_Init_2()
     NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
     NVIC_Init(&NVIC_InitStructure);
     
-    // ³õÊ¼»¯DMA·¢ËÍ£¨²»ÔÙÊ¹ÓÃDMA½ÓÊÕ£©
+    // åˆå§‹åŒ–DMAå‘é€ï¼ˆä¸å†ä½¿ç”¨DMAæ¥æ”¶ï¼‰
     DMA_TX_Configuration_USART3();
     
     USART_Cmd(USART3, ENABLE);
 }
 
-// USART3ÖĞ¶Ï´¦Àíº¯Êı - ÖĞ¶Ï½ÓÊÕ
+// USART3ä¸­æ–­å¤„ç†å‡½æ•° - ä¸­æ–­æ¥æ”¶
 void USART3_IRQHandler(void)
 {
-    // ½ÓÊÕÖĞ¶Ï´¦Àí
+    // æ¥æ”¶ä¸­æ–­å¤„ç†
     if(USART_GetITStatus(USART3, USART_IT_RXNE) == SET)
     {
-        // ¶ÁÈ¡½ÓÊÕµ½µÄÊı¾İ
+        // è¯»å–æ¥æ”¶åˆ°çš„æ•°æ®
         uint8_t data = USART_ReceiveData(USART3);
         
       
         
-        // ´æ´¢µ½½ÓÊÕ»º³åÇø
+        // å­˜å‚¨åˆ°æ¥æ”¶ç¼“å†²åŒº
         if(rx_index_3 < RX_BUFFER_SIZE_3) {
             rx_buffer_3[rx_index_3++] = data;
         } else {
-            // »º³åÇøÒç³ö£¬´ÓÍ·¿ªÊ¼
+            // ç¼“å†²åŒºæº¢å‡ºï¼Œä»å¤´å¼€å§‹
             rx_index_3 = 0;
             rx_buffer_3[rx_index_3++] = data;
         }
         
-//        // ¿ÉÒÔÔÚÕâÀïÖ±½Ó´¦ÀíÃ¿¸ö×Ö½Ú£¬»òÕßµÈ´ı¿ÕÏĞÖĞ¶Ï
+//        // å¯ä»¥åœ¨è¿™é‡Œç›´æ¥å¤„ç†æ¯ä¸ªå­—èŠ‚ï¼Œæˆ–è€…ç­‰å¾…ç©ºé—²ä¸­æ–­
 //         ModbusRTU_ReceiveHandler(data);
     }
     
-    // ¿ÕÏĞÖĞ¶Ï´¦Àí£¨Ö¡½áÊø¼ì²â£©
+    // ç©ºé—²ä¸­æ–­å¤„ç†ï¼ˆå¸§ç»“æŸæ£€æµ‹ï¼‰
     if(USART_GetITStatus(USART3, USART_IT_IDLE) == SET)
     {
-        // Çå³ı¿ÕÏĞÖĞ¶Ï±êÖ¾£¨Í¨¹ı¶ÁSRºÍDR¼Ä´æÆ÷£©
-        USART_ReceiveData(USART3); // ¶ÁÈ¡DR¼Ä´æÆ÷Çå³ı±êÖ¾
+        // æ¸…é™¤ç©ºé—²ä¸­æ–­æ ‡å¿—ï¼ˆé€šè¿‡è¯»SRå’ŒDRå¯„å­˜å™¨ï¼‰
+        USART_ReceiveData(USART3); // è¯»å–DRå¯„å­˜å™¨æ¸…é™¤æ ‡å¿—
         
-        // Ö¡½ÓÊÕÍê³É£¬ÉèÖÃ±êÖ¾
+        // å¸§æ¥æ”¶å®Œæˆï¼Œè®¾ç½®æ ‡å¿—
         if(rx_index_3 > 0) {
 //            rx_complete_3 = 1;
             
             modbus_rx_complete = 1;
-            // µ÷ÊÔĞÅÏ¢
+            // è°ƒè¯•ä¿¡æ¯
            //// Serial_SendString_2("Frame received, length: ");
            //// Serial_SendNum_2(rx_index_3, 3);
            //// Serial_SendString_2("\r\n");
@@ -148,82 +148,82 @@ void USART3_IRQHandler(void)
     }
 }
 
-// DMA·¢ËÍÍê³ÉÖĞ¶Ï
+// DMAå‘é€å®Œæˆä¸­æ–­
 void DMA1_Channel2_IRQHandler(void)
 {
     if(DMA_GetITStatus(DMA1_IT_TC2) == SET)
     {
-        // Çå³ıÖĞ¶Ï±êÖ¾
+        // æ¸…é™¤ä¸­æ–­æ ‡å¿—
         DMA_ClearITPendingBit(DMA1_IT_TC2);
         
-        // ½ûÓÃDMAÍ¨µÀ
+        // ç¦ç”¨DMAé€šé“
         DMA_Cmd(DMA1_Channel2, DISABLE);
         
-        // ½ûÓÃUSART3µÄDMA·¢ËÍ
+        // ç¦ç”¨USART3çš„DMAå‘é€
         USART_DMACmd(USART3, USART_DMAReq_Tx, DISABLE);
         
-        // Çå³ı·¢ËÍÃ¦±êÖ¾
+        // æ¸…é™¤å‘é€å¿™æ ‡å¿—
         tx_busy_3 = 0;
         
-        // ¿ÉÒÔÔÚÕâÀïÌí¼Ó·¢ËÍÍê³É»Øµ÷
+        // å¯ä»¥åœ¨è¿™é‡Œæ·»åŠ å‘é€å®Œæˆå›è°ƒ
      ////   Serial_SendString_1("DMA send complete\r\n");
     }
 }
 
-// DMA·¢ËÍº¯Êı£¨·Ç×èÈû£©
+// DMAå‘é€å‡½æ•°ï¼ˆéé˜»å¡ï¼‰
 uint8_t Serial_SendBuffer_DMA_2(uint8_t *buffer, uint16_t length)
 {
     if(tx_busy_3) {
-        return 0; // DMAÕıÃ¦£¬·¢ËÍÊ§°Ü
+        return 0; // DMAæ­£å¿™ï¼Œå‘é€å¤±è´¥
     }
     
     if(length > TX_BUFFER_SIZE_3) {
-        length = TX_BUFFER_SIZE_3; // ½Ø¶Ï
+        length = TX_BUFFER_SIZE_3; // æˆªæ–­
     }
     
-    // ¸´ÖÆÊı¾İµ½·¢ËÍ»º³åÇø
+    // å¤åˆ¶æ•°æ®åˆ°å‘é€ç¼“å†²åŒº
     for(uint16_t i = 0; i < length; i++) {
         tx_buffer_3[i] = buffer[i];
     }
     
-    // ÅäÖÃDMA´«Êä³¤¶È
+    // é…ç½®DMAä¼ è¾“é•¿åº¦
     DMA_SetCurrDataCounter(DMA1_Channel2, length);
     
-    // ÉèÖÃ·¢ËÍÃ¦±êÖ¾
+    // è®¾ç½®å‘é€å¿™æ ‡å¿—
     tx_busy_3 = 1;
     
-    // Ê¹ÄÜDMAÍ¨µÀ
+    // ä½¿èƒ½DMAé€šé“
     DMA_Cmd(DMA1_Channel2, ENABLE);
     
-    // Ê¹ÄÜUSART3µÄDMA·¢ËÍ
+    // ä½¿èƒ½USART3çš„DMAå‘é€
     USART_DMACmd(USART3, USART_DMAReq_Tx, ENABLE);
     
-    return 1; // ·¢ËÍÆô¶¯³É¹¦
+    return 1; // å‘é€å¯åŠ¨æˆåŠŸ
 }
 
-// ¼æÈİÔ­ÓĞµÄ²éÑ¯·¢ËÍº¯Êı£¨¿ÉÑ¡±£Áô£©
+// å…¼å®¹åŸæœ‰çš„æŸ¥è¯¢å‘é€å‡½æ•°ï¼ˆå¯é€‰ä¿ç•™ï¼‰
 void Serial_SendByte_2(uint8_t Byte)
 {
-    // Èç¹ûDMA²»Ã¦£¬Ê¹ÓÃDMA·¢ËÍµ¥¸ö×Ö½Ú
+    // å¦‚æœDMAä¸å¿™ï¼Œä½¿ç”¨DMAå‘é€å•ä¸ªå­—èŠ‚
     uint8_t buffer[1] = {Byte};
     if(!Serial_SendBuffer_DMA_2(buffer, 1)) {
-        // DMAÃ¦£¬Ê¹ÓÃ²éÑ¯·¢ËÍ×÷Îªºó±¸
+        // DMAå¿™ï¼Œä½¿ç”¨æŸ¥è¯¢å‘é€ä½œä¸ºåå¤‡
         while(USART_GetFlagStatus(USART3, USART_FLAG_TXE) == RESET);
         USART_SendData(USART3, Byte);
     }
 }
 
-// ÅúÁ¿·¢ËÍº¯Êı£¨Ê¹ÓÃDMA£©
+// æ‰¹é‡å‘é€å‡½æ•°ï¼ˆä½¿ç”¨DMAï¼‰
 void Serial_SendArray_2(uint8_t *array, uint16_t length)
 {
     if(Serial_SendBuffer_DMA_2(array, length)) {
-        // µÈ´ıDMA·¢ËÍÍê³É£¨¿ÉÑ¡£¬Èç¹ûÊÇ·Ç×èÈû¿ÉÒÔÌø¹ı£©
+        // ç­‰å¾…DMAå‘é€å®Œæˆï¼ˆå¯é€‰ï¼Œå¦‚æœæ˜¯éé˜»å¡å¯ä»¥è·³è¿‡ï¼‰
         while(tx_busy_3) {
-            // ¿ÉÒÔÔÚÕâÀïÖ´ĞĞÆäËûÈÎÎñ
+            // å¯ä»¥åœ¨è¿™é‡Œæ‰§è¡Œå…¶ä»–ä»»åŠ¡
             Delay_ms(1);
         }
     } else {
-        // DMAÃ¦£¬Ê¹ÓÃ²éÑ¯·¢ËÍ×÷Îªºó±¸
+        // DMAå¿™ï¼Œä½¿ç”¨æŸ¥è¯¢å‘é€ä½œä¸ºåå¤‡
         for(uint16_t i = 0; i < length; i++) {
             while(USART_GetFlagStatus(USART3, USART_FLAG_TXE) == RESET);
             USART_SendData(USART3, array[i]);
@@ -231,13 +231,13 @@ void Serial_SendArray_2(uint8_t *array, uint16_t length)
     }
 }
 
-// ¼ì²éDMA·¢ËÍ×´Ì¬
+// æ£€æŸ¥DMAå‘é€çŠ¶æ€
 uint8_t Serial_DMA_Busy_2(void)
 {
     return tx_busy_3;
 }
 
-// ÆäËû¸¨Öúº¯Êı±£³Ö²»±ä
+// å…¶ä»–è¾…åŠ©å‡½æ•°ä¿æŒä¸å˜
 void Serial_SendHexByte_2(uint8_t byte) {
     uint8_t nibbles[2];
     nibbles[0] = (byte >> 4) & 0x0F;
@@ -262,7 +262,7 @@ void Serial_SendHex_2(uint16_t num)
 }
 
 
-void Serial_SendString_2(char *string) {
+void Serial_SendString_2(const char *string) {
     for(uint16_t i = 0; string[i] != '\0'; i++) {
         Serial_SendByte_2(string[i]);
     }
@@ -302,13 +302,13 @@ void Serial_SendNumber_2(int32_t number)
 
 
 /*
-// ModbusÏìÓ¦·¢ËÍº¯Êı£¨Ê¹ÓÃDMA£©
+// Modbuså“åº”å‘é€å‡½æ•°ï¼ˆä½¿ç”¨DMAï¼‰
 void Modbus_SendResponse_DMA(uint8_t *data, uint16_t length) {
     if(Serial_SendBuffer_DMA_2(data, length)) {
        // Serial_SendString_2("Modbus response sent via DMA\r\n");
     } else {
         Serial_SendString_2("DMA busy, Modbus response delayed\r\n");
-        // ¿ÉÒÔÔÚÕâÀïÊµÏÖ·¢ËÍ¶ÓÁĞ
+        // å¯ä»¥åœ¨è¿™é‡Œå®ç°å‘é€é˜Ÿåˆ—
     }
 }
 */
