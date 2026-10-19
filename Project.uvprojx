@@ -783,12 +783,12 @@
             <File>
               <FileName>MGPIOO.c</FileName>
               <FileType>1</FileType>
-              <FilePath>D:\项目\Hardware\MGPIOO.c</FilePath>
+              <FilePath>.\Hardware\MGPIOO.c</FilePath>
             </File>
             <File>
               <FileName>MGPIOO.h</FileName>
               <FileType>5</FileType>
-              <FilePath>D:\项目\Hardware\MGPIOO.h</FilePath>
+              <FilePath>.\Hardware\MGPIOO.h</FilePath>
             </File>
             <File>
               <FileName>modubus_rtu_slave.c</FileName>
