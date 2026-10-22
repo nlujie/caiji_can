@@ -120,40 +120,12 @@ ADC_Raw_Data_t raw_adc_spi1_chip1 = {0};
 ADC_Raw_Data_t raw_adc_spi1_chip2 = {0};
 ADC_Raw_Data_t raw_adc_spi2 = {0};
 
-// 芯片配置表
+// All 12 ADS1118 single-ended channels acquire 4-20mA loops.
 const Chip_Config_t chip_configs[] = {
-    // SPI1第一个芯片配置 (PA4)
-    {
-        "SPI1-Chip1(PA4)",
-        {
-            {SENSOR_4_20MA, "4-20mA"},     // AIN0
-            {SENSOR_4_20MA, "4-20mA"},     // AIN1
-            {SENSOR_THERMISTOR, "Temp"},   // AIN2
-            {SENSOR_THERMISTOR, "Temp"}    // AIN3
-        }
-    },
-    // SPI1第二个芯片配置 (PA8)
-    {
-        "SPI1-Chip2(PA3)",
-        {
-            {SENSOR_4_20MA, "4-20mA"},     // AIN0
-            {SENSOR_4_20MA, "4-20mA"},     // AIN1
-            {SENSOR_4_20MA, "4-20mA"},     // AIN2
-            {SENSOR_THERMISTOR, "Temp"}    // AIN3
-        }
-    },
-    // SPI2芯片配置 (PB12)
-    {
-        "SPI2-Chip(PB12)",
-        {
-            {SENSOR_VOLTAGE_0_10V, "0-10V"}, // AIN0
-            {SENSOR_4_20MA, "4-20mA"},       // AIN1
-            {SENSOR_4_20MA, "4-20mA"},       // AIN2
-            {SENSOR_THERMISTOR, "Temp"}      // AIN3
-        }
-    }
+    {"SPI1-Chip1(PA4)", {{SENSOR_4_20MA,"4-20mA"},{SENSOR_4_20MA,"4-20mA"},{SENSOR_4_20MA,"4-20mA"},{SENSOR_4_20MA,"4-20mA"}}},
+    {"SPI1-Chip2(PA3)", {{SENSOR_4_20MA,"4-20mA"},{SENSOR_4_20MA,"4-20mA"},{SENSOR_4_20MA,"4-20mA"},{SENSOR_4_20MA,"4-20mA"}}},
+    {"SPI2-Chip(PB12)", {{SENSOR_4_20MA,"4-20mA"},{SENSOR_4_20MA,"4-20mA"},{SENSOR_4_20MA,"4-20mA"},{SENSOR_4_20MA,"4-20mA"}}}
 };
-
 
 // 自定义串口发送浮点数函数
 void Serial_SendFloat(float value, int decimal_places) {
@@ -280,8 +252,7 @@ void CAN_Module_Init(void) {
 
 // 将电压值转换为电流值 (使用100Ω分流电阻，2V量程)
 float ConvertVoltageToCurrent_2V(float voltage_v) {
-    if(voltage_v < 0.4f) voltage_v = 0.4f;
-    if(voltage_v > 2.0f) voltage_v = 2.0f;
+    // No clamping: preserve out-of-range inputs for fault detection.
     return (voltage_v / SHUNT_RESISTOR_100OHM) * 1000.0f;
 }
 
@@ -449,923 +420,149 @@ void CAN_Send_All_ADC_Raw_Data(void) {
     // 发送SPI2芯片的原始数据
     can_data.channels = raw_adc_spi2;
     CAN_Send_ADC_Raw_Data(CAN_ID_SPI2_RAW, &can_data);
+    Delay_ms(2); // Drain final raw frame before current frames.
 }
 
-// Dedicated 4-20mA CAN frames from the existing 100-ohm shunt:
-// ADS1118 1 count = 0.0625mV = 0.000625mA; CAN uses 0.01mA/LSB.
-// Invalid readings use 0xFFFF, never a misleading clipped 4mA/20mA.
+// 2.0V is the PCB voltage at 20mA across a nominal 100-ohm shunt.
+// ADS1118 uses PGA +/-2.048V, 1 LSB = 0.0625mV, not a 2.000V ADC reference.
+volatile uint16_t adc_420_raw_code[ADC_420_CHANNELS] = {0};
+volatile uint16_t adc_420_current_centima[ADC_420_CHANNELS] = {0};
+volatile float adc_420_voltage_v[ADC_420_CHANNELS] = {0};
+volatile uint16_t adc_420_valid_mask = 0u;
+volatile uint32_t adc_420_scan_counter = 0u;
+
+// Logical current channel mapping from previous 0x120 and 0x121 frames.
+// Physical: P0..3 = SPI1/PA4, P4..7 = SPI1/PA3, P8..11 = SPI2/PB12.
+static const uint8_t adc_420_legacy_map[7] = {0u,1u,4u,5u,6u,9u,10u};
+static const uint8_t adc_420_extra_map[5] = {2u,3u,7u,8u,11u};
 volatile uint8_t can_adc_current_valid_mask = 0u;
 volatile uint8_t can_adc_current_sample_sequence = 0u;
 volatile uint32_t can_adc_current_tx_busy_count = 0u;
-
-static uint16_t ADC_Current_0p01mA(uint16_t adc_code)
-{
-    if(adc_code < 6400u || adc_code > 32000u) {
-        return CAN_4_20MA_INVALID;
-    }
-    return (uint16_t)((adc_code + 8u) / 16u);
-}
 
 static void CAN_ADC_Pack_U16(CanTxMsg *tx, uint8_t slot, uint16_t value)
 {
     tx->Data[slot * 2u] = (uint8_t)(value & 0xFFu);
     tx->Data[slot * 2u + 1u] = (uint8_t)(value >> 8);
 }
-
+static void CAN_ADC_Queue(CanTxMsg *tx)
+{
+    if(CAN_Transmit(CAN1, tx) == CAN_TxStatus_NoMailBox) {
+        can_adc_current_tx_busy_count++;
+    }
+}
 void CAN_Send_All_4_20mA(void)
 {
-    // ch0-6: flow1/flow2/pressure1/pressure2/pressure3/pressure4/pressure5.
-    uint16_t adc_codes[7] = {
-        filtered_adc_spi1_chip1_ain0, filtered_adc_spi1_chip1_ain1,
-        filtered_adc_spi1_chip2_ain0, filtered_adc_spi1_chip2_ain1,
-        filtered_adc_spi1_chip2_ain2, filtered_adc_spi2_ain1,
-        filtered_adc_spi2_ain2
-    };
-    uint16_t value[7];
-    uint8_t valid_mask = 0u;
-    uint8_t seq;
-    uint8_t i;
     CanTxMsg tx;
-
-    for(i = 0u; i < 7u; ++i) {
-        value[i] = ADC_Current_0p01mA(adc_codes[i]);
-        if(value[i] != CAN_4_20MA_INVALID) {
-            valid_mask = (uint8_t)(valid_mask | (uint8_t)(1u << i));
-        }
-    }
-    seq = can_adc_current_sample_sequence++;
-    can_adc_current_valid_mask = valid_mask;
+    uint16_t mask = adc_420_valid_mask;
+    uint8_t legacy_mask = 0u;
+    uint8_t seq = can_adc_current_sample_sequence++;
+    uint8_t i;
     tx.ExtId = 0u;
     tx.IDE = CAN_Id_Standard;
     tx.RTR = CAN_RTR_Data;
     tx.DLC = 8u;
-
-    // 0x120: ch0..ch3 (four 16-bit little-endian values).
+    // Keep previous 0x120: CH0=P0 CH1=P1 CH2=P4 CH3=P5.
     tx.StdId = CAN_ID_4_20MA_0_3;
-    for(i = 0u; i < 4u; ++i) {
-        CAN_ADC_Pack_U16(&tx, i, value[i]);
+    for(i=0u; i<4u; ++i) {
+        CAN_ADC_Pack_U16(&tx,i,adc_420_current_centima[adc_420_legacy_map[i]]);
     }
-    // A returned mailbox is a queue success, not CAN peer acknowledgement.
-    if(CAN_Transmit(CAN1, &tx) == CAN_TxStatus_NoMailBox) {
-        can_adc_current_tx_busy_count++;
-    }
+    CAN_ADC_Queue(&tx);
     Delay_ms(2);
-
-    // 0x121: ch4..ch6, then all-channel valid bitmap + rolling sequence.
+    // Keep previous 0x121: CH4=P6 CH5=P9 CH6=P10, validity CH0..6, seq.
     tx.StdId = CAN_ID_4_20MA_4_6;
-    for(i = 0u; i < 3u; ++i) {
-        CAN_ADC_Pack_U16(&tx, i, value[i + 4u]);
+    for(i=0u; i<7u; ++i) {
+        if((mask & (uint16_t)(1u << adc_420_legacy_map[i])) != 0u) {
+            legacy_mask = (uint8_t)(legacy_mask | (uint8_t)(1u << i));
+        }
+        if(i>=4u) {
+            CAN_ADC_Pack_U16(&tx,(uint8_t)(i-4u),adc_420_current_centima[adc_420_legacy_map[i]]);
+        }
     }
-    tx.Data[6] = valid_mask;
+    tx.Data[6] = legacy_mask;
     tx.Data[7] = seq;
-    if(CAN_Transmit(CAN1, &tx) == CAN_TxStatus_NoMailBox) {
-        can_adc_current_tx_busy_count++;
+    can_adc_current_valid_mask = legacy_mask;
+    CAN_ADC_Queue(&tx);
+    Delay_ms(2);
+    // Five newly enabled current loops from the formerly thermistor/voltage inputs.
+    tx.StdId = CAN_ID_4_20MA_7_10;
+    for(i=0u; i<4u; ++i) {
+        CAN_ADC_Pack_U16(&tx,i,adc_420_current_centima[adc_420_extra_map[i]]);
     }
+    CAN_ADC_Queue(&tx);
+    Delay_ms(2);
+    // 0x123: CH11, physical P0..P11 valid mask and same sample seq.
+    tx.StdId = CAN_ID_4_20MA_11_STATUS;
+    CAN_ADC_Pack_U16(&tx,0u,adc_420_current_centima[adc_420_extra_map[4]]);
+    CAN_ADC_Pack_U16(&tx,1u,mask);
+    tx.Data[4]=seq; tx.Data[5]=0u; tx.Data[6]=0u; tx.Data[7]=0u;
+    CAN_ADC_Queue(&tx);
 }
 
-uint16_t adc_value,a1,a2,a3,a4,adc_value1,adc_value2,adc_value3,adc_value4,adc_value5,adc_value6,adc_value7,adc_value8;
-// 使用Read_ADS1118_Direct函数读取所有传感器数据
-void Read_ADS1118_Direct(void) {
-    
-    float voltage_mv, voltage_v;
-    
-    Serial_SendString_2("=== ADS1118 Sensor Data ===\r\n");
-    
-//    // SPI1第一个芯片 (PA4片选) - 4个通道
-    Serial_SendString_2(chip_configs[0].chip_name);
-    Serial_SendString_2(": ");
-    
-    
-    // AIN0: 4-20mA     adc8
-    Serial_SendString_2("Config=0x");
-    Serial_SendHex_2(ADS1118_CONFIG_AIN0); // 打印配置寄存器值
-    Serial_SendString_2(" ");
-   // AIN0: 4-20mA
-    a1 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN0);
-//    raw_adc_spi1_chip1.ain0 = adc_value;  // 使用结构体存储原始ADC值
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi1_chip1_ain0_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    Serial_SendString_2("AIN0:");
-//    Serial_SendFloat(spi1_chip1_ain0_current, 1);
-//    Serial_SendString_2("mA(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);  // 添加电压显示，3位小数
-//    Serial_SendString_2("V) ");
-    Delay_ms(5); 
-    
-   
-    
-    // AIN0: 4-20mA     
-//    adc_value = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN0);
-    a1 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN0);
-    
-    
-    // 应用复合滤波
-    float comp_filtered_adc0 = apply_composite_filter(&comp_filter_spi1_chip1_ain0, (float)a1);
-    filtered_adc_spi1_chip1_ain0 = (uint16_t)comp_filtered_adc0;
-    
-    // 只发送6400-32000范围内的值
-    if(filtered_adc_spi1_chip1_ain0 >= 6400 && filtered_adc_spi1_chip1_ain0 <= 32000) {
-        raw_adc_spi1_chip1.ain0 = filtered_adc_spi1_chip1_ain0;
-        voltage_mv = filtered_adc_spi1_chip1_ain0 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        spi1_chip1_ain0_current = ConvertVoltageToCurrent_2V(voltage_v);
-        
-        float flow_rate = ConvertCurrentToFlow(spi1_chip1_ain0_current);
-        
-        Serial_SendString_2("AIN0:");
-        Serial_SendFloat(spi1_chip1_ain0_current, 1);
-        Serial_SendString_2("mA(Flow:");
-        Serial_SendFloat(flow_rate, 2);
-        Serial_SendString_2("cm/s ADC:");
-        Serial_SendNumber_2(filtered_adc_spi1_chip1_ain0);
-        Serial_SendString_2(") ");
-        
-       
-    Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);  // 添加电压显示，3位小数
-    Serial_SendString_2("V) ");
-    } else {
-        Serial_SendString_2("AIN0:INVALID ");
-    }
-    
-    
-    
-    
- //   raw_adc_spi1_chip1.ain0 = a1;  // 使用结构体存储原始ADC值
-//    voltage_mv = a1 * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi1_chip1_ain0_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    // 计算流量
-//float flow_rate = ConvertCurrentToFlow(spi1_chip1_ain0_current);
+// For each ADS1118 single-ended MUX channel, first write configuration,
+// then allow conversion settling at 860SPS before reading the next result.
+static uint16_t ADC_420_Read_One(uint8_t chip, uint16_t config)
+{
+    uint16_t data;
+    if(chip==0u) (void)ADS1118_ReadVotage_SPI1_Chip1(config);
+    else if(chip==1u) (void)ADS1118_ReadVotage_SPI1_Chip2(config);
+    else (void)ADS1118_ReadVotage_SPI2(config);
+    Delay_ms(4);
+    if(chip==0u) data=ADS1118_ReadVotage_SPI1_Chip1(config);
+    else if(chip==1u) data=ADS1118_ReadVotage_SPI1_Chip2(config);
+    else data=ADS1118_ReadVotage_SPI2(config);
+    return data;
+}
 
-//    Serial_SendString_2("AIN0:");
-//    Serial_SendFloat(spi1_chip1_ain0_current, 1);
-//    Serial_SendString_2("mA(");
-//    
-//    Serial_SendString_2("Flow:");
-//Serial_SendFloat(flow_rate, 2);  // 流量显示，2位小数
-//Serial_SendString_2("cm/s ");
-//    
-//    Serial_SendNumber_2(a1);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);  // 添加电压显示，3位小数
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-       // AIN1: 4-20mA   adc9
-    a2 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN1);
-//    raw_adc_spi1_chip1.ain1 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi1_chip1_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    Serial_SendString_2("AIN1:");
-//    Serial_SendFloat(spi1_chip1_ain1_current, 1);
-//    Serial_SendString_2("mA(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-    // AIN1: 4-20mA  
-    a2 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN1);
-    
-    float comp_filtered_adc1 = apply_composite_filter(&comp_filter_spi1_chip1_ain1, (float)a2);
-    filtered_adc_spi1_chip1_ain1 = (uint16_t)comp_filtered_adc1;
-    
-    if(filtered_adc_spi1_chip1_ain1 >= 6400 && filtered_adc_spi1_chip1_ain1 <= 32000) {
-        raw_adc_spi1_chip1.ain1 = filtered_adc_spi1_chip1_ain1;
-        voltage_mv = filtered_adc_spi1_chip1_ain1 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        spi1_chip1_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
-        
-        float flow_rate1 = ConvertCurrentToFlow(spi1_chip1_ain1_current);
-        
-        Serial_SendString_2("AIN1:");
-        Serial_SendFloat(spi1_chip1_ain1_current, 1);
-        Serial_SendString_2("mA(Flow2:");
-        Serial_SendFloat(flow_rate1, 2);
-        Serial_SendString_2("cm/s ADC:");
-        Serial_SendNumber_2(filtered_adc_spi1_chip1_ain1);
-        Serial_SendString_2(") ");
-        
-        Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);
-    Serial_SendString_2("V) ");
-        
-        
-    } else {
-        Serial_SendString_2("AIN1:INVALID ");
+// Scan all 12 inputs; raw CAN 0x110..0x112 order remains unchanged.
+// Retain the old 'filtered_adc_*' names for ABI compatibility; here they
+// store current raw codes without the earlier NTC/temperature filter.
+void Read_ADS1118_Direct(void)
+{
+    static const uint16_t cfg[4] = {
+        ADS1118_CONFIG_AIN0,ADS1118_CONFIG_AIN1,
+        ADS1118_CONFIG_AIN2,ADS1118_CONFIG_AIN3
+    };
+    uint16_t sample[ADC_420_CHANNELS];
+    uint16_t mask=0u;
+    uint8_t chip,ain,k;
+    for(chip=0u; chip<3u; ++chip) {
+        for(ain=0u; ain<4u; ++ain) {
+            sample[chip*4u+ain]=ADC_420_Read_One(chip,cfg[ain]);
+        }
     }
-    
-    
-//    raw_adc_spi1_chip1.ain1 = a2;
-//    voltage_mv = a2 * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi1_chip1_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    
-//    float flow_rate1 = ConvertCurrentToFlow(spi1_chip1_ain1_current);
-//    
-//    Serial_SendString_2("AIN1:");
-//    Serial_SendFloat(spi1_chip1_ain1_current, 1);
-//    Serial_SendString_2("mA(");
-//    
-//     Serial_SendString_2("Flow1:");
-//Serial_SendFloat(flow_rate1, 2);  // 流量显示，2位小数
-//Serial_SendString_2("cm/s ");
-//    
-//    
-//    Serial_SendNumber_2(a2);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-//    
-
-    // AIN2: 热电阻   adc10
-    a3 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN2);
-//    raw_adc_spi1_chip1.ain2 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    float resistance1 = CalculateNTCResistance(voltage_v);
-//    spi1_chip1_ain2_temp = CalculateNTCTemperature(resistance1);
-//    Serial_SendString_2("AIN2:");
-//    Serial_SendFloat(spi1_chip1_ain2_temp, 1);
-//    Serial_SendString_2("C(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance1, 0);  // 添加电阻值显示
-//    Serial_SendString_2("Ω) ");
-    Delay_ms(5);
-
-    // AIN2: 热电阻
-    a3 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN2);
-    
-    float comp_filtered_adc2 = apply_composite_filter(&comp_filter_spi1_chip1_ain2, (float)a3);
-    filtered_adc_spi1_chip1_ain2 = (uint16_t)comp_filtered_adc2;
-    
-    if(filtered_adc_spi1_chip1_ain2 >= 6400 && filtered_adc_spi1_chip1_ain2 <= 32000) {
-        raw_adc_spi1_chip1.ain2 = filtered_adc_spi1_chip1_ain2;
-        voltage_mv = filtered_adc_spi1_chip1_ain2 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        float resistance1 = CalculateNTCResistance_t3(voltage_v);
-        spi1_chip1_ain2_temp = CalculateNTCTemperature(resistance1);
-        
-        Serial_SendString_2("AIN2:T6: ");
-        Serial_SendFloat(spi1_chip1_ain2_temp, 1);
-        Serial_SendString_2("C(ADC:");
-        Serial_SendNumber_2(filtered_adc_spi1_chip1_ain2);
-        Serial_SendString_2(") ");
-        
-        Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);
-    Serial_SendString_2("V,");
-        
-        Serial_SendFloat(resistance1, 0);  // 添加电阻值显示
-    Serial_SendString_2("Ω) ");
-    } else {
-        Serial_SendString_2("AIN2:INVALID ");
+    raw_adc_spi1_chip1.ain0=filtered_adc_spi1_chip1_ain0=sample[0];
+    raw_adc_spi1_chip1.ain1=filtered_adc_spi1_chip1_ain1=sample[1];
+    raw_adc_spi1_chip1.ain2=filtered_adc_spi1_chip1_ain2=sample[2];
+    raw_adc_spi1_chip1.ain3=filtered_adc_spi1_chip1_ain3=sample[3];
+    raw_adc_spi1_chip2.ain0=filtered_adc_spi1_chip2_ain0=sample[4];
+    raw_adc_spi1_chip2.ain1=filtered_adc_spi1_chip2_ain1=sample[5];
+    raw_adc_spi1_chip2.ain2=filtered_adc_spi1_chip2_ain2=sample[6];
+    raw_adc_spi1_chip2.ain3=filtered_adc_spi1_chip2_ain3=sample[7];
+    raw_adc_spi2.ain0=filtered_adc_spi2_ain0=sample[8];
+    raw_adc_spi2.ain1=filtered_adc_spi2_ain1=sample[9];
+    raw_adc_spi2.ain2=filtered_adc_spi2_ain2=sample[10];
+    raw_adc_spi2.ain3=filtered_adc_spi2_ain3=sample[11];
+    for(k=0u;k<ADC_420_CHANNELS;++k) {
+        uint16_t code=sample[k];
+        adc_420_raw_code[k]=code;
+        adc_420_voltage_v[k]=((float)(int16_t)code)*ADC_420_LSB_V;
+        if((code&0x8000u)!=0u || code<ADC_420_VALID_MIN_CODE || code>ADC_420_VALID_MAX_CODE) {
+            adc_420_current_centima[k]=CAN_4_20MA_INVALID;
+        } else {
+            adc_420_current_centima[k]=(uint16_t)((code+8u)/16u);
+            mask=(uint16_t)(mask|(uint16_t)(1u<<k));
+        }
     }
-    
-    
-    
-//    raw_adc_spi1_chip1.ain2 = a3;
-//    voltage_mv = a3 * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    float resistance1 = CalculateNTCResistance_t3(voltage_v);
-//    spi1_chip1_ain2_temp = CalculateNTCTemperature(resistance1);
-//    Serial_SendString_2("AIN2: T3： ");
-//    Serial_SendFloat(spi1_chip1_ain2_temp, 1);
-//    Serial_SendString_2("C(");
-//    Serial_SendNumber_2(a3);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance1, 0);  // 添加电阻值显示
-//    Serial_SendString_2("Ω) ");
-    Delay_ms(5);
-//    
-
-     // AIN3: 热电阻   adc11
-    a4 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN3);
-//    raw_adc_spi1_chip1.ain3 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    float resistance2 = CalculateNTCResistance(voltage_v);
-//    spi1_chip1_ain3_temp = CalculateNTCTemperature(resistance2);
-//    Serial_SendString_2("AIN3:");
-//    Serial_SendFloat(spi1_chip1_ain3_temp, 1);
-//    Serial_SendString_2("C(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance2, 0);  // 添加电阻值显示
-//    Serial_SendString_2("Ω)\r\n");
-    Delay_ms(5);
-
-    // AIN3: 热电阻
-    a4 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN3);
-    
-    float comp_filtered_adc3 = apply_composite_filter(&comp_filter_spi1_chip1_ain3, (float)a4);
-    filtered_adc_spi1_chip1_ain3 = (uint16_t)comp_filtered_adc3;
-    
-    if(filtered_adc_spi1_chip1_ain3 >= 6400 && filtered_adc_spi1_chip1_ain3 <= 32000) {
-        raw_adc_spi1_chip1.ain3 = filtered_adc_spi1_chip1_ain3;
-        voltage_mv = filtered_adc_spi1_chip1_ain3 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        float resistance2 = CalculateNTCResistance(voltage_v);
-        spi1_chip1_ain3_temp = CalculateNTCTemperature(resistance2);
-        
-        Serial_SendString_2("AIN3:");
-        Serial_SendFloat(spi1_chip1_ain3_temp, 1);
-        Serial_SendString_2("C(ADC:");
-        Serial_SendNumber_2(filtered_adc_spi1_chip1_ain3);
-        Serial_SendString_2(") ");
-        
-         Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);
-    Serial_SendString_2("V,");
-           Serial_SendFloat(resistance2, 0);  // 添加电阻值显示
-    Serial_SendString_2("Ω)\r\n");
-        
-    } else {
-        Serial_SendString_2("AIN3:INVALID\r\n");
-    }
-    
-    
-//    raw_adc_spi1_chip1.ain3 = a4;
-//    voltage_mv = a4 * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    float resistance2 = CalculateNTCResistance(voltage_v);
-//    spi1_chip1_ain3_temp = CalculateNTCTemperature(resistance2);
-//    Serial_SendString_2("AIN3:");
-//    Serial_SendFloat(spi1_chip1_ain3_temp, 1);
-//    Serial_SendString_2("C(");
-//    Serial_SendNumber_2(a4);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance2, 0);  // 添加电阻值显示
-//    Serial_SendString_2("Ω)\r\n");
-    Delay_ms(5);
-    
-    
-    
-    
-    
-//    // SPI1第二个芯片 (PA8片选) - 4个通道
-    Serial_SendString_2(chip_configs[1].chip_name);
-    Serial_SendString_2(": ");
-//    
-////    
-//      adc_value = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN0);
-//      Delay_ms(5);
-//      
-////      adc_value = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN0);
-////      Delay_ms(5);
-//     // AIN0: 4-20mA   adc4
-    adc_value1 = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN0);
-//    raw_adc_spi1_chip2.ain0 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi1_chip2_ain0_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    Serial_SendString_2("AIN0:");
-//    Serial_SendFloat(spi1_chip2_ain0_current, 1);
-//    Serial_SendString_2("mA(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-//    
-    // AIN0: 4-20mA
-    adc_value1 = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN0);
-    
-    float comp_filtered_adc4 = apply_composite_filter(&comp_filter_spi1_chip2_ain0, (float)adc_value1);
-    filtered_adc_spi1_chip2_ain0 = (uint16_t)comp_filtered_adc4;
-    
-    if(filtered_adc_spi1_chip2_ain0 >= 6400 && filtered_adc_spi1_chip2_ain0 <= 32000) {
-        raw_adc_spi1_chip2.ain0 = filtered_adc_spi1_chip2_ain0;
-        voltage_mv = filtered_adc_spi1_chip2_ain0 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        spi1_chip2_ain0_current = ConvertVoltageToCurrent_2V(voltage_v);
-        
-        float pressure_bar = ConvertCurrentToPressure(spi1_chip2_ain0_current);
-        
-        Serial_SendString_2("AIN0:");
-        Serial_SendFloat(spi1_chip2_ain0_current, 1);
-        Serial_SendString_2("mA(P:");
-        Serial_SendFloat(pressure_bar, 2);
-        Serial_SendString_2("bar ADC:");
-        Serial_SendNumber_2(filtered_adc_spi1_chip2_ain0);
-        Serial_SendString_2(") ");
-        
-        Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);
-    Serial_SendString_2("V) ");
-    } else {
-        Serial_SendString_2("AIN0:INVALID ");
-    }
-    
-//    raw_adc_spi1_chip2.ain0 = adc_value1;
-//    voltage_mv = adc_value1 * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi1_chip2_ain0_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    
-//    // 计算压力
-//float pressure_bar = ConvertCurrentToPressure(spi1_chip2_ain0_current);
-//    
-//    Serial_SendString_2("AIN0:");
-//    Serial_SendFloat(spi1_chip2_ain0_current, 1);
-//    Serial_SendString_2("mA(");
-//    
-//    Serial_SendString_2("P4:");
-//Serial_SendFloat(pressure_bar, 2);
-//Serial_SendString_2("bar ");
-//    
-//    Serial_SendNumber_2(adc_value1);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-    
-   
-       // AIN1: 4-20mA   adc5
-    adc_value2 = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN1);
-//    raw_adc_spi1_chip2.ain1 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi1_chip2_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    Serial_SendString_2("AIN1:");
-//    Serial_SendFloat(spi1_chip2_ain1_current, 1);
-//    Serial_SendString_2("mA(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-//    
-    // AIN1: 4-20mA
-    adc_value2 = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN1);
-    
-    
-    float comp_filtered_adc5 = apply_composite_filter(&comp_filter_spi1_chip2_ain1, (float)adc_value2);
-    filtered_adc_spi1_chip2_ain1 = (uint16_t)comp_filtered_adc5;
-    
-    if(filtered_adc_spi1_chip2_ain1 >= 6400 && filtered_adc_spi1_chip2_ain1 <= 32000) {
-        raw_adc_spi1_chip2.ain1 = filtered_adc_spi1_chip2_ain1;
-        voltage_mv = filtered_adc_spi1_chip2_ain1 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        spi1_chip2_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
-        
-        float pressure_bar1 = ConvertCurrentToPressure(spi1_chip2_ain1_current);
-        
-        Serial_SendString_2("AIN1:");
-        Serial_SendFloat(spi1_chip2_ain1_current, 1);
-        Serial_SendString_2("mA(P:");
-        Serial_SendFloat(pressure_bar1, 2);
-        Serial_SendString_2("bar ADC:");
-        Serial_SendNumber_2(filtered_adc_spi1_chip2_ain1);
-        Serial_SendString_2(") ");
-        
-        Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);
-    Serial_SendString_2("V) ");
-    
-      } else {
-        Serial_SendString_2("AIN1:INVALID ");
-      }
-    
-//    raw_adc_spi1_chip2.ain1 = adc_value2;
-//    voltage_mv = adc_value2 * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi1_chip2_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    
-//      // 计算压力
-//float pressure_bar1 = ConvertCurrentToPressure(spi1_chip2_ain1_current);
-//    
-//    
-//    Serial_SendString_2("AIN1:");
-//    Serial_SendFloat(spi1_chip2_ain1_current, 1);
-//    Serial_SendString_2("mA(");
-//    
-//    Serial_SendString_2("P:");
-//Serial_SendFloat(pressure_bar1, 2);
-//Serial_SendString_2("bar ");
-//    
-//    Serial_SendNumber_2(adc_value2);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-    
-        // AIN2: 4-20mA    adc6
-    adc_value3 = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN2);
-//    raw_adc_spi1_chip2.ain2 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi1_chip2_ain2_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    Serial_SendString_2("AIN2:");
-//    Serial_SendFloat(spi1_chip2_ain2_current, 1);
-//    Serial_SendString_2("mA(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-    // AIN2: 4-20mA
-    adc_value3 = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN2);
-    
-    
-     float comp_filtered_adc6 = apply_composite_filter(&comp_filter_spi1_chip2_ain2, (float)adc_value3);
-    filtered_adc_spi1_chip2_ain2 = (uint16_t)comp_filtered_adc6;
-    
-    if(filtered_adc_spi1_chip2_ain2 >= 6400 && filtered_adc_spi1_chip2_ain2 <= 32000) {
-        raw_adc_spi1_chip2.ain2 = filtered_adc_spi1_chip2_ain2;
-        voltage_mv = filtered_adc_spi1_chip2_ain2 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        spi1_chip2_ain2_current = ConvertVoltageToCurrent_2V(voltage_v);
-        
-        float pressure_bar2 = ConvertCurrentToPressure(spi1_chip2_ain2_current);
-        
-        Serial_SendString_2("AIN2:");
-        Serial_SendFloat(spi1_chip2_ain2_current, 1);
-        Serial_SendString_2("mA(P7:");
-        Serial_SendFloat(pressure_bar2, 2);
-        Serial_SendString_2("bar ADC:");
-        Serial_SendNumber_2(filtered_adc_spi1_chip2_ain2);
-        Serial_SendString_2(") ");
-        
-        Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);
-    Serial_SendString_2("V) ");
-    } else {
-        Serial_SendString_2("AIN2:INVALID ");
-    }
-    
-//    raw_adc_spi1_chip2.ain2 = adc_value3;
-//    voltage_mv = adc_value3 * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi1_chip2_ain2_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    
-//          // 计算压力
-//float pressure_bar2 = ConvertCurrentToPressure(spi1_chip2_ain2_current);
-//    
-//    
-//    Serial_SendString_2("AIN2:");
-//    Serial_SendFloat(spi1_chip2_ain2_current, 1);
-//    Serial_SendString_2("mA(");
-//    
-//    Serial_SendString_2("P3:");
-//Serial_SendFloat(pressure_bar2, 2);
-//Serial_SendString_2("bar ");
-//    
-//    Serial_SendNumber_2(adc_value3);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-    
-//     adc_value = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN3);
-//    Delay_ms(5);
-//      // AIN3: 热电阻   adc7
-    adc_value4 = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN3);
-//    raw_adc_spi1_chip2.ain3 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    float resistance3 = CalculateNTCResistance(voltage_v);
-//    spi1_chip2_ain3_temp = CalculateNTCTemperature(resistance3);
-//    Serial_SendString_2("AIN3:");
-//    Serial_SendFloat(spi1_chip2_ain3_temp, 1);
-//    Serial_SendString_2("C(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance3, 0);  // 添加电阻值显示
-//    Serial_SendString_2("Ω)\r\n");
-    Delay_ms(5);
-    
-    // AIN3: 热电阻
-    adc_value4 = ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN3);
-    
-    
-    float comp_filtered_adc7 = apply_composite_filter(&comp_filter_spi1_chip2_ain3, (float)adc_value4);
-    filtered_adc_spi1_chip2_ain3 = (uint16_t)comp_filtered_adc7;
-    
-    if(filtered_adc_spi1_chip2_ain3 >= 6400 && filtered_adc_spi1_chip2_ain3 <= 32000) {
-        raw_adc_spi1_chip2.ain3 = filtered_adc_spi1_chip2_ain3;
-        voltage_mv = filtered_adc_spi1_chip2_ain3 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        float resistance3 = CalculateNTCResistance(voltage_v);
-        spi1_chip2_ain3_temp = CalculateNTCTemperature(resistance3);
-        
-        Serial_SendString_2("AIN3:  T5： ");
-        Serial_SendFloat(spi1_chip2_ain3_temp, 1);
-        Serial_SendString_2("C(ADC:");
-        Serial_SendNumber_2(filtered_adc_spi1_chip2_ain3);
-        Serial_SendString_2(") ");
-        
-         Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);
-    Serial_SendString_2("V,");
-           Serial_SendFloat(resistance3, 0);  // 添加电阻值显示
-    Serial_SendString_2("Ω)\r\n");
-        
-    } else {
-        Serial_SendString_2("AIN3:INVALID ");
-    }
-    
-    
-//    raw_adc_spi1_chip2.ain3 = adc_value4;
-//    voltage_mv = adc_value4 * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    float resistance3 = CalculateNTCResistance_t2(voltage_v);
-//    spi1_chip2_ain3_temp = CalculateNTCTemperature(resistance3);
-//    Serial_SendString_2("AIN3: T2:");
-//    Serial_SendFloat(spi1_chip2_ain3_temp, 1);
-//    Serial_SendString_2("C(");
-//    Serial_SendNumber_2(adc_value4);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance3, 0);  // 添加电阻值显示
-//    Serial_SendString_2("Ω)\r\n");
-    Delay_ms(5);
-    
-    // SPI2芯片 - 4个通道
-    Serial_SendString_2(chip_configs[2].chip_name);
-    Serial_SendString_2(": ");
-    
-    
-       // AIN0: 0-10V电压    adc0
-    adc_value5 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN0);
-//    raw_adc_spi2.ain0 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi2_ain0_voltage = ConvertVoltageToOriginal_10V(voltage_v);
-//    Serial_SendString_2("AIN0:");
-//    Serial_SendFloat(spi2_ain0_voltage, 2);
-//    Serial_SendString_2("V(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);  // 显示ADS1118实际测量的电压
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-    // AIN0: 0-10V电压
-    adc_value5 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN0);
-    
-    float comp_filtered_adc8 = apply_composite_filter(&comp_filter_spi2_ain0, (float)adc_value5);
-    filtered_adc_spi2_ain0 = (uint16_t)comp_filtered_adc8;
-    
-    if(filtered_adc_spi2_ain0 >= 6400 && filtered_adc_spi2_ain0 <= 32000) {
-        raw_adc_spi2.ain0 = filtered_adc_spi2_ain0;
-        voltage_mv = filtered_adc_spi2_ain0 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        spi2_ain0_voltage = ConvertVoltageToOriginal_10V(voltage_v);
-        
-        Serial_SendString_2("AIN0:");
-        Serial_SendFloat(spi2_ain0_voltage, 2);
-        Serial_SendString_2("V(ADC:");
-        Serial_SendNumber_2(filtered_adc_spi2_ain0);
-        Serial_SendString_2(") ");
-        
-        Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);  // 显示ADS1118实际测量的电压
-    Serial_SendString_2("V) ");
-    } else {
-        Serial_SendString_2("AIN0:INVALID ");
-    }
-    
-    
-//    raw_adc_spi2.ain0 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi2_ain0_voltage = ConvertVoltageToOriginal_10V(voltage_v);
-//    Serial_SendString_2("AIN0:");
-//    Serial_SendFloat(spi2_ain0_voltage, 2);
-//    Serial_SendString_2("V(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);  // 显示ADS1118实际测量的电压
-//    Serial_SendString_2("V) ");
-//    Delay_ms(5);
-    
-    // AIN1: 4-20mA   adc1
-    adc_value6 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN1);
-//    raw_adc_spi2.ain1 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi2_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    Serial_SendString_2("AIN1:");
-//    Serial_SendFloat(spi2_ain1_current, 1);
-//    Serial_SendString_2("mA(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-    // AIN1: 4-20mA
-    adc_value6 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN1);
-    
-    float comp_filtered_adc9 = apply_composite_filter(&comp_filter_spi2_ain1, (float)adc_value6);
-    filtered_adc_spi2_ain1 = (uint16_t)comp_filtered_adc9;
-    
-    if(filtered_adc_spi2_ain1 >= 6400 && filtered_adc_spi2_ain1 <= 32000) {
-        raw_adc_spi2.ain1 = filtered_adc_spi2_ain1;
-        voltage_mv = filtered_adc_spi2_ain1 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        spi2_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
-        
-        float pressure_bar3 = ConvertCurrentToPressure(spi2_ain1_current);
-        
-        Serial_SendString_2("AIN1:");
-        Serial_SendFloat(spi2_ain1_current, 1);
-        Serial_SendString_2("mA(P6:");
-        Serial_SendFloat(pressure_bar3, 2);
-        Serial_SendString_2("bar ADC:");
-        Serial_SendNumber_2(filtered_adc_spi2_ain1);
-        Serial_SendString_2(") ");
-        
-        Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);
-    Serial_SendString_2("V) ");
-    } else {
-        Serial_SendString_2("AIN1:INVALID ");
-    }
-    
-//    raw_adc_spi2.ain1 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi2_ain1_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    
-//      // 计算压力
-//float pressure_bar3 = ConvertCurrentToPressure(spi2_ain1_current);
-//    
-//    Serial_SendString_2("AIN1:");
-//    Serial_SendFloat(spi2_ain1_current, 1);
-//    Serial_SendString_2("mA(");
-//    
-//    Serial_SendString_2("P2:");
-//Serial_SendFloat(pressure_bar3, 2);
-//Serial_SendString_2("bar ");
-//    
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-    
-    
-       // AIN2: 4-20mA   adc2
-    adc_value7 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN2);
-//    raw_adc_spi2.ain2 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi2_ain2_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    Serial_SendString_2("AIN2:");
-//    Serial_SendFloat(spi2_ain2_current, 1);
-//    Serial_SendString_2("mA(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-    // AIN2: 4-20mA
-    adc_value7 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN2);
-    
-      float comp_filtered_adc10 = apply_composite_filter(&comp_filter_spi2_ain2, (float)adc_value7);
-    filtered_adc_spi2_ain2 = (uint16_t)comp_filtered_adc10;
-    
-    if(filtered_adc_spi2_ain2 >= 6400 && filtered_adc_spi2_ain2 <= 32000) {
-        raw_adc_spi2.ain2 = filtered_adc_spi2_ain2;
-        voltage_mv = filtered_adc_spi2_ain2 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        spi2_ain2_current = ConvertVoltageToCurrent_2V(voltage_v);
-        
-        float pressure_bar4 = ConvertCurrentToPressure(spi2_ain2_current);
-        
-        Serial_SendString_2("AIN2:");
-        Serial_SendFloat(spi2_ain2_current, 1);
-        Serial_SendString_2("mA(P5:");
-        Serial_SendFloat(pressure_bar4, 2);
-        Serial_SendString_2("bar ADC:");
-        Serial_SendNumber_2(filtered_adc_spi2_ain2);
-        Serial_SendString_2(") ");
-        
-        Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);
-    Serial_SendString_2("V) ");
-    } else {
-        Serial_SendString_2("AIN1:INVALID ");
-    }
-    
-    
-//    raw_adc_spi2.ain2 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    spi2_ain2_current = ConvertVoltageToCurrent_2V(voltage_v);
-//    
-//    // 计算压力
-//    float pressure_bar4 = ConvertCurrentToPressure(spi2_ain2_current); 
-//   
-//    
-//    
-//    Serial_SendString_2("AIN2:");
-//    Serial_SendFloat(spi2_ain2_current, 1);
-//    Serial_SendString_2("mA(");
-//    
-//      Serial_SendString_2("P1:");
-//Serial_SendFloat(pressure_bar4, 2);
-//Serial_SendString_2("bar ");
-//    
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V) ");
-    Delay_ms(5);
-    
-    
-       // AIN3: 热电阻    adc3
-    adc_value8 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN3);
-//    raw_adc_spi2.ain3 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    float resistance4 = CalculateNTCResistance(voltage_v);
-//    spi2_ain3_temp = CalculateNTCTemperature(resistance4);
-//    Serial_SendString_2("AIN3:");
-//    Serial_SendFloat(spi2_ain3_temp, 1);
-//    Serial_SendString_2("C(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance4, 0);  // 添加电阻值显示
-//    Serial_SendString_2("Ω)\r\n\r\n");
-     Delay_ms(5);
-    
-    // AIN3: 热电阻
-    adc_value8 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN3);
-    
-    float comp_filtered_adc11 = apply_composite_filter(&comp_filter_spi2_ain3, (float)adc_value8);
-    filtered_adc_spi2_ain3 = (uint16_t)comp_filtered_adc11;
-    
-    if(filtered_adc_spi2_ain3 >= 6400 && filtered_adc_spi2_ain3 <= 32000) {
-        raw_adc_spi2.ain3 = filtered_adc_spi2_ain3;
-        voltage_mv = filtered_adc_spi2_ain3 * ADC_CONVERSION_FACTOR;
-        voltage_v = voltage_mv / 1000.0f;
-        float resistance4 = CalculateNTCResistance(voltage_v);
-        spi2_ain3_temp = CalculateNTCTemperature(resistance4);
-        
-        Serial_SendString_2("AIN3:  T4： ");
-        Serial_SendFloat(spi2_ain3_temp, 1);
-        Serial_SendString_2("C(ADC:");
-        Serial_SendNumber_2(filtered_adc_spi2_ain3);
-        Serial_SendString_2(") ");
-        
-         Serial_SendString_2(",");
-    Serial_SendFloat(voltage_v, 3);
-    Serial_SendString_2("V,");
-           Serial_SendFloat(resistance4, 0);  // 添加电阻值显示
-    Serial_SendString_2("Ω)\r\n");
-        
-    } else {
-        Serial_SendString_2("AIN3:INVALID ");
-    }
-    
-    
-//    raw_adc_spi2.ain3 = adc_value;
-//    voltage_mv = adc_value * ADC_CONVERSION_FACTOR;
-//    voltage_v = voltage_mv / 1000.0f;
-//    float resistance4 = CalculateNTCResistance_t1(voltage_v);
-//    spi2_ain3_temp = CalculateNTCTemperature(resistance4);
-//    Serial_SendString_2("AIN3: T1：");
-//    Serial_SendFloat(spi2_ain3_temp, 1);
-//    Serial_SendString_2("C(");
-//    Serial_SendNumber_2(adc_value);
-//    Serial_SendString_2(",");
-//    Serial_SendFloat(voltage_v, 3);
-//    Serial_SendString_2("V,");
-//    Serial_SendFloat(resistance4, 0);  // 添加电阻值显示
-//    Serial_SendString_2("Ω)\r\n\r\n");
-     Delay_ms(5);
-    
-    // 发送所有原始ADC数据到CAN
-    CAN_Send_All_ADC_Raw_Data();
+    // Preserve the former 7 current floats used by Keil Watch.
+    spi1_chip1_ain0_current=(adc_420_current_centima[0]==CAN_4_20MA_INVALID)?0.0f:(float)adc_420_current_centima[0]/100.0f;
+    spi1_chip1_ain1_current=(adc_420_current_centima[1]==CAN_4_20MA_INVALID)?0.0f:(float)adc_420_current_centima[1]/100.0f;
+    spi1_chip2_ain0_current=(adc_420_current_centima[4]==CAN_4_20MA_INVALID)?0.0f:(float)adc_420_current_centima[4]/100.0f;
+    spi1_chip2_ain1_current=(adc_420_current_centima[5]==CAN_4_20MA_INVALID)?0.0f:(float)adc_420_current_centima[5]/100.0f;
+    spi1_chip2_ain2_current=(adc_420_current_centima[6]==CAN_4_20MA_INVALID)?0.0f:(float)adc_420_current_centima[6]/100.0f;
+    spi2_ain1_current=(adc_420_current_centima[9]==CAN_4_20MA_INVALID)?0.0f:(float)adc_420_current_centima[9]/100.0f;
+    spi2_ain2_current=(adc_420_current_centima[10]==CAN_4_20MA_INVALID)?0.0f:(float)adc_420_current_centima[10]/100.0f;
+    adc_420_valid_mask=mask;
+    adc_420_scan_counter++;
 }
 
 
@@ -1699,8 +896,8 @@ void task_100ms(void) {
 // 200ms任务
 void task_200ms(void) {
     Read_ADS1118_Direct();
-    CAN_Send_All_ADC_Raw_Data();  // Retain the 12 ADC raw values (0x110-0x112).
-    CAN_Send_All_4_20mA();        // Seven 4-20mA currents (0x120-0x121).
+    CAN_Send_All_ADC_Raw_Data(); // 12 raw ADC codes in 0x110-0x112.
+    CAN_Send_All_4_20mA();       // 12 current readings in 0x120-0x123.
 //     HTM440_Task();
     
     // 空任务

@@ -1,54 +1,54 @@
-# ADS1118 ADC → CAN protocol (main_ADC_SPI_1022_1607)
+# 12路4–20mA采集与CAN报文 — main_ADC_SPI_1022_2110
 
-## Channel confirmation
+## 硬件与量程
 
-The existing firmware uses **3 × ADS1118 × 4 single-ended AIN inputs = 12 ADC inputs**. Only **7 inputs** are currently configured as 4–20 mA; the other 5 are **4 thermistor** inputs and **1 voltage** input. These are firmware declarations, not a guarantee of PCB wiring.
+使用3颗ADS1118，每颗4路单端AIN，全部12路输入均为外部4–20mA传感器。按旧固件分流电阻 **100Ω** 假设：4mA=0.4V，12mA=1.2V，20mA=2.0V。**2.0V是PCB模拟信号满量程，而不是ADS1118的ADC参考电压**。ADS1118量程配置为±2.048V，1码=0.0625mV；每码电流为0.000625mA，对应0.01mA的CAN值=ADC码/16（四舍五入）。如实际PCB为运放增益、分压或其他采样电阻，需要重新标定换算关系。
 
-| Current channel | ADC | Input | Existing logical use |
+ADS1118按860SPS、连续转换模式运行；每次切换AIN后等待4ms再读取，整个12路扫描约48ms。默认200ms周期扫描一次（以实际测量为准）。SPI1时钟72MHz/32=2.25MHz，SPI2时钟36MHz/16=2.25MHz；CAN1 500kbps使用PA11/PA12。SPI1片选PA4和**PA3**（旧注释错写PA8），SPI2片选PB12。
+
+## ADC物理顺序
+
+| 物理索引 | 片选 | 通道 | 原始CAN ID/字节 |
 |---|---|---|---|
-| CH0 | SPI1 / CS PA4 | AIN0 | Flow 1 |
-| CH1 | SPI1 / CS PA4 | AIN1 | Flow 2 |
-| CH2 | SPI1 / CS PA3 | AIN0 | Pressure 1 |
-| CH3 | SPI1 / CS PA3 | AIN1 | Pressure 2 |
-| CH4 | SPI1 / CS PA3 | AIN2 | Pressure 3 |
-| CH5 | SPI2 / CS PB12 | AIN1 | Pressure 4 |
-| CH6 | SPI2 / CS PB12 | AIN2 | Pressure 5 |
+| P0 | SPI1/PA4 | AIN0 | 0x110 / 0–1 |
+| P1 | SPI1/PA4 | AIN1 | 0x110 / 2–3 |
+| P2 | SPI1/PA4 | AIN2 | 0x110 / 4–5 |
+| P3 | SPI1/PA4 | AIN3 | 0x110 / 6–7 |
+| P4 | SPI1/PA3 | AIN0 | 0x111 / 0–1 |
+| P5 | SPI1/PA3 | AIN1 | 0x111 / 2–3 |
+| P6 | SPI1/PA3 | AIN2 | 0x111 / 4–5 |
+| P7 | SPI1/PA3 | AIN3 | 0x111 / 6–7 |
+| P8 | SPI2/PB12 | AIN0 | 0x112 / 0–1 |
+| P9 | SPI2/PB12 | AIN1 | 0x112 / 2–3 |
+| P10 | SPI2/PB12 | AIN2 | 0x112 / 4–5 |
+| P11 | SPI2/PB12 | AIN3 | 0x112 / 6–7 |
 
-Remaining ADC inputs: SPI1 PA4 AIN2/3 and SPI1 PA3 AIN3 and SPI2 PB12 AIN3 (thermistors); SPI2 PB12 AIN0 (0–10 V).
+## CAN电流值（保持父分支7路逻辑映射不变）
 
-**Important:** Some old comments say SPI1 chip 2 CS=PA8, but the actual GPIO macro and initializer select **PA3**. Confirm against the board schematic. Existing CAN init uses **PA11 RX / PA12 TX**, not the PB8/PB9 remap. Verify the transceiver pin connections. Hardware ADC inputs do not connect to CAN directly; MCU reads ADS1118 using SPI and sends processed values over CAN.
+| 标准ID | Byte0–1 | Byte2–3 | Byte4–5 | Byte6–7 |
+|---|---|---|---|---|
+| 0x120 | 逻辑CH0=P0 | CH1=P1 | CH2=P4 | CH3=P5 |
+| 0x121 | CH4=P6 | CH5=P9 | CH6=P10 | Byte6:旧7路有效位；Byte7:序号 |
+| 0x122 | 新增CH7=P2 | CH8=P3 | CH9=P7 | CH10=P8 |
+| 0x123 | 新增CH11=P11 | 物理P0–P11有效位图(低12位) | Byte4:序号，Byte5:保留 | Byte6–7:保留 |
 
-## CAN wire format
+全部CAN数据均为11位标准ID、DLC 8，每个测量值都是16位无符号小端整数，单位**0.01mA**。4mA→400（90 01）、12mA→1200（B0 04）、20mA→2000（D0 07）。超出有效范围发送FFFF，并清除有效位。为允许传感器轻微误差，**有效范围设置为3.6–20.4mA**，注意标称量程仍为4–20mA。原始0x110–0x112始终发送12路实测ADC码，即使超出电流量程亦可用于故障诊断。
 
-500 kbit/s (configured with 36 MHz PCLK1, 1+9+8 TQ, prescaler 4); **11-bit standard ID**, data frames, DLC 8, period nominal **200 ms**, updated immediately after `Read_ADS1118_Direct()`. Channel words are **unsigned 16-bit little endian, unit 0.01 mA (value / 100)**.
+**位图索引不同：**0x121的Byte6对应逻辑CH0–CH6；0x123的Byte2–3对应物理P0–P11。0x121的Byte7与0x123的Byte4为同一周期递增序号（0–255）；0x120/0x122无序号，接收方还需做超时检测。
 
-| Standard ID | Bytes 0-1 | 2-3 | 4-5 | 6 | 7 |
-|---|---|---|---|---|---|
-| 0x120 | CH0 u16 | CH1 u16 | CH2 u16 | CH3 low byte | CH3 high byte |
-| 0x121 | CH4 u16 | CH5 u16 | CH6 u16 | validity mask | sequence counter |
+## Keil调试变量
 
-In ID `0x120`, bytes **6–7 together** form the CH3 u16 value. Each current word is `ADC_code / 16` rounded (ADC1118 voltage at 0.0625 mV/code across a 100-ohm shunt). Hence **4.00 mA = 400 = 0x0190**, **12.00 mA = 1200 = 0x04B0**, **20.00 mA = 2000 = 0x07D0**.
+- `adc_420_raw_code[0..11]`: 采集原始16位码，6400约为4mA，32000约为20mA。
+- `adc_420_voltage_v[0..11]`: ADC输入电压V，4–20mA正常时约0.4–2.0V。
+- `adc_420_current_centima[0..11]`: 实际电流×100，无效时0xFFFF。
+- `adc_420_valid_mask`: 12位有效位图，全部有效=0x0FFF。
+- `adc_420_scan_counter`: 全部12路完成一次采集后加1。
+- `can_adc_current_sample_sequence`: CAN周期递增序号。
+- `can_adc_current_tx_busy_count`: 无CAN发送邮箱次数。
 
-Valid range follows the existing 4–20 mA ADC guard: inclusive ADC codes 6400–32000. **`0xFFFF` means invalid, unconnected, or out-of-range**; do not treat it as a current. ID 0x121 byte 6: bit `n` set means CH`n` valid (bits 7 reserved 0). Byte 7 is an 8-bit modulo-256 sequence number for each acquisition cycle. For complete samples, ensure both frames are fresh; reject stale frames on the receiver. As the sequence is only on 0x121, proximity in receive time is also required to pair 0x120 with 0x121.
+## 变更与测试
 
-Original CAN payloads are **unchanged** and still sent:
-- `0x110`: 4 filtered ADC raw 16-bit counts for SPI1 / PA4 AIN0–3 (8 bytes)
-- `0x111`: 4 filtered ADC raw counts for SPI1 / PA3 AIN0–3
-- `0x112`: 4 filtered ADC raw counts for SPI2 / PB12 AIN0–3
-
-The raw frames also use little-endian u16, so all 12 ADC measurements remain available for temperature and voltage calculations on the receiver.
-
-## Example CAN analyzer test
-
-1. Connect CAN transceivers (CAN_H/CAN_L and appropriate common reference) and terminate **120 ohms at each physical bus end**. Use a 500-kbit/s CAN analyzer in normal/ACK-capable mode.
-2. Power the ADC board; observe IDs **0x110, 0x111, 0x112, 0x120, 0x121**. Each ID should appear around once per 200 ms; serial diagnostics and polling may introduce jitter.
-3. Apply a calibrated 4 mA, 12 mA, and 20 mA input independently to each of CH0–CH6; expect approximately **400**, **1200**, **2000** on its CAN slot. Verify byte order (e.g. 12 mA -> **B0 04**).
-4. Disconnect a loop; corresponding current should become `FF FF` after filter settling, and its corresponding valid bit should clear.
-5. Watch `can_adc_current_valid_mask`, `can_adc_current_sample_sequence`, and `can_adc_current_tx_busy_count` in Keil for diagnosis. Incrementing busy count means a frame could not obtain a CAN transmit mailbox.
-6. Verify readings on the real board. This commit is code-reviewed but **not Keil-built or hardware-tested**.
-
-## Engineering notes
-
-- New 0x120/0x121 frames preserve old 0x110–0x112 consumers. The change also corrects two AIN3 copy/paste errors, configures both MISO pins as inputs, and enables CAN automatic retransmission/bus-off recovery.
-- There are three ADS1118 devices. Firmware channels are not MCU internal ADC channels.
-- Existing ADS1118 conversion/filter routines and calibration factors are otherwise unchanged; confirm board input scaling, reference, shunts, and chip select wiring.
+- 原先4路温度、1路0–10V输入改为4–20mA，现12路电流均执行SPI扫描；删除原读数中的NTC/0-10V计算路径和重复的CAN发送。
+- 采样读数为稳定转换后的原始值（不再采用旧的温度复合滤波器），原名`filtered_adc_*`用于保留旧CAN原始报文接口，实际是未经复合滤波的当前原码。
+- 改善SPI时钟频率；保留其他CAN接收与串口/Modbus逻辑。
+- **未用Keil ARMCC5实际编译，未用万用表、信号源或CAN分析仪完成硬件验收**。实测建议逐路输入4mA、12mA、20mA，检查原码及CAN值；断线后应看到FFFF和有效位清除。务必核对PCB电阻/放大器比例、PA3片选、CAN引脚与实际连线。

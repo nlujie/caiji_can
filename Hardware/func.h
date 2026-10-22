@@ -33,7 +33,7 @@ typedef union {
     uint16_t words[4];        // 以16位数组形式访问
 } CAN_Data_Union_t;
 
-// 传感器类型枚举
+// 历史兼容的传感器类型枚举（本分支12路全部配置SENSOR_4_20MA）
 typedef enum {
     SENSOR_4_20MA = 0,    // 4-20mA电流传感器
     SENSOR_THERMISTOR,    // 热电阻温度传感器
@@ -114,7 +114,19 @@ extern uint16_t filtered_adc_spi2_ain3;
 
 #define CAN_ID_4_20MA_0_3    0x120u  // Current CH0..CH3, 0.01mA/LSB
 #define CAN_ID_4_20MA_4_6    0x121u  // CH4..CH6, valid mask, sequence
-#define CAN_4_20MA_INVALID   0xFFFFu // Invalid/out-of-range
+#define CAN_ID_4_20MA_7_10     0x122u  // New current CH7..CH10
+#define CAN_ID_4_20MA_11_STATUS 0x123u  // CH11 + 12-bit valid mask + seq
+#define CAN_4_20MA_INVALID     0xFFFFu
+#define ADC_420_CHANNELS       12u
+#define ADC_420_LSB_V          0.0000625f  // +/-2.048V PGA, not 2.000V
+#define ADC_420_VALID_MIN_CODE 5760u       // 3.6mA, diagnostics margin
+#define ADC_420_VALID_MAX_CODE 32640u      // 20.4mA, diagnostics margin
+
+extern volatile uint16_t adc_420_raw_code[ADC_420_CHANNELS];
+extern volatile uint16_t adc_420_current_centima[ADC_420_CHANNELS];
+extern volatile float adc_420_voltage_v[ADC_420_CHANNELS];
+extern volatile uint16_t adc_420_valid_mask;
+extern volatile uint32_t adc_420_scan_counter;
 
 
 

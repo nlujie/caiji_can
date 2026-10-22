@@ -298,7 +298,7 @@ void SPI1_Init(void)
     SPI_InitStructure.SPI_CPOL = SPI_CPOL_Low;// 空闲时钟低电平
     SPI_InitStructure.SPI_CPHA = SPI_CPHA_2Edge;// 第二个边沿采样
     SPI_InitStructure.SPI_NSS = SPI_NSS_Soft;// 软件管理片选
-    SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8;// 分频
+    SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;// SPI1 PCLK2 72MHz / 32 = 2.25MHz
     SPI_InitStructure.SPI_FirstBit = SPI_FirstBit_MSB;// 高位先发
     SPI_InitStructure.SPI_CRCPolynomial = 7;
     SPI_Init(SPI1, &SPI_InitStructure);
@@ -341,7 +341,7 @@ void SPI2_Init(void)
     SPI_InitStructure.SPI_CPOL = SPI_CPOL_Low;
     SPI_InitStructure.SPI_CPHA = SPI_CPHA_2Edge;
     SPI_InitStructure.SPI_NSS = SPI_NSS_Soft;
-    SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;
+    SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_16;// SPI2 PCLK1 36MHz / 16 = 2.25MHz
     SPI_InitStructure.SPI_FirstBit = SPI_FirstBit_MSB;
     SPI_InitStructure.SPI_CRCPolynomial = 7;
     SPI_Init(SPI2, &SPI_InitStructure);
@@ -357,7 +357,7 @@ void ADS1118_Init(void)
 {	
     GPIO_InitTypeDef GPIO_InitStructure;
     
-    // 初始化SPI1的两个CS引脚 (PA4和PA8)
+    // 初始化SPI1的两个CS引脚 (PA4和PA3)
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
     
     // SPI1的第一个CS (PA4)
@@ -367,7 +367,7 @@ void ADS1118_Init(void)
     GPIO_Init(GPIOA, &GPIO_InitStructure);
     ADC_CS1_High();
     
-    // SPI1的第二个CS (PA8)
+    // SPI1的第二个CS (PA3)
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
     GPIO_Init(GPIOA, &GPIO_InitStructure);
     ADC_CS2_High();
@@ -383,8 +383,8 @@ void ADS1118_Init(void)
     SPI2_Init();
     
     // 设置速率
-    SPI1_SetSpeed(SPI_BaudRatePrescaler_8);
-    SPI2_SetSpeed(SPI_BaudRatePrescaler_8);
+    SPI1_SetSpeed(SPI_BaudRatePrescaler_32);
+    SPI2_SetSpeed(SPI_BaudRatePrescaler_16);
 }
 
 void SPI1_SetSpeed(u8 SPI_BaudRatePrescaler)

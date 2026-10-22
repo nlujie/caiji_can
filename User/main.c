@@ -14,71 +14,71 @@
 #include "serial1.h"
 #include "serial2.h"
 #include "stm32f10x_it.h"
-#include <math.h>  // ÓÃÓÚÊıÑ§º¯Êı
+#include <math.h>  // ç”¨äºæ•°å­¦å‡½æ•°
 #include "func.h"
 #include "modbus_rtu_master.h"
 
-// È«¾Ö±äÁ¿£ºÏµÍ³Ê±¼ä´Á
+// å…¨å±€å˜é‡ï¼šç³»ç»Ÿæ—¶é—´æˆ³
 extern volatile uint32_t systemTick2;
 
 
 extern void Serial_SendFloat(float value, int decimal_places);
 
-// È«¾Ö±äÁ¿ÉùÃ÷
+// å…¨å±€å˜é‡å£°æ˜
 extern CAN_Message can_rx_msg;
 extern uint32_t last_can_activity_time;
 
 
-// CAN²âÊÔ±äÁ¿
+// CANæµ‹è¯•å˜é‡
 uint32_t last_can_test_time = 0;
 uint8_t can_test_data = 0;
 
-//// ADC²âÁ¿±äÁ¿
+//// ADCæµ‹é‡å˜é‡
 //float original_voltage10 = 0.0f;
 //float original_voltage11 = 0.0f;
 //float original_voltage12 = 0.0f;
 //float original_voltage13 = 0.0f;
 
 
-//// ADC²âÁ¿±äÁ¿
+//// ADCæµ‹é‡å˜é‡
 //float original_voltage14 = 0.0f;
 //float original_voltage15 = 0.0f;
 //float original_voltage16 = 0.0f;
 //float original_voltage17 = 0.0f;
 
 
-//// ÎÂ¶È²âÁ¿±äÁ¿
-//float temperature = 0.0f;  // ¼ÆËãµÃµ½µÄÎÂ¶ÈÖµ
+//// æ¸©åº¦æµ‹é‡å˜é‡
+//float temperature = 0.0f;  // è®¡ç®—å¾—åˆ°çš„æ¸©åº¦å€¼
 
-//// NTC²ÎÊı
-//#define NTC_R25 10000.0f   // 25¡ãCÊ±µÄµç×èÖµ (10K¦¸)
-//#define NTC_BETA 3435.0f   // BetaÖµ
-//#define NTC_T25 298.15f    // 25¡ãC¶ÔÓ¦µÄ¿ª¶ûÎÄÎÂ¶È (25 + 273.15)
+//// NTCå‚æ•°
+//#define NTC_R25 10000.0f   // 25Â°Cæ—¶çš„ç”µé˜»å€¼ (10KÎ©)
+//#define NTC_BETA 3435.0f   // Betaå€¼
+//#define NTC_T25 298.15f    // 25Â°Cå¯¹åº”çš„å¼€å°”æ–‡æ¸©åº¦ (25 + 273.15)
 
-//// ²Î¿¼µç×èÖµ£¨·ÖÑ¹µçÂ·ÖĞµÄÉÏÀ­µç×è£©
-//#define REF_RESISTOR 10000.0f  // 10K¦¸
+//// å‚è€ƒç”µé˜»å€¼ï¼ˆåˆ†å‹ç”µè·¯ä¸­çš„ä¸Šæ‹‰ç”µé˜»ï¼‰
+//#define REF_RESISTOR 10000.0f  // 10KÎ©
 
 
-// ÕıÈ·µÄ SysTick ³õÊ¼»¯
+// æ­£ç¡®çš„ SysTick åˆå§‹åŒ–
 void SysTick_Init(void)
 {
  
     
     
-    // ÅäÖÃ SysTick Îª 1ms ÖĞ¶ÏÒ»´Î
+    // é…ç½® SysTick ä¸º 1ms ä¸­æ–­ä¸€æ¬¡
     if (SysTick_Config(SystemCoreClock / 1000)) {
-        // ´íÎó´¦Àí
+        // é”™è¯¯å¤„ç†
         while (1);
     }
     
-    // ÉèÖÃ SysTick ÖĞ¶ÏÓÅÏÈ¼¶£¨¿ÉÑ¡£©
+    // è®¾ç½® SysTick ä¸­æ–­ä¼˜å…ˆçº§ï¼ˆå¯é€‰ï¼‰
     NVIC_SetPriority(SysTick_IRQn, 0);
     
 }
 
 
 
-// »ñÈ¡µ±Ç°Ê±¼ä´Á£¨ºÁÃë£©
+// è·å–å½“å‰æ—¶é—´æˆ³ï¼ˆæ¯«ç§’ï¼‰
 uint32_t GetTick(void)
 {
     return systemTick2;
@@ -86,56 +86,56 @@ uint32_t GetTick(void)
 
 
 /*
-// »ñÈ¡µ±Ç°Ê±¼ä´Á£¨µ¥Î»£ººÁÃë£©
+// è·å–å½“å‰æ—¶é—´æˆ³ï¼ˆå•ä½ï¼šæ¯«ç§’ï¼‰
 uint32_t GetTick(void) {
     return systemTick;
 }
 */
 
-//// ¸ù¾İµçÑ¹¼ÆËãNTCµç×èÖµ
+//// æ ¹æ®ç”µå‹è®¡ç®—NTCç”µé˜»å€¼
 //float CalculateNTCResistance(float voltage) {
-//    // ¼ÙÉèÊ¹ÓÃ·ÖÑ¹µçÂ·£ºVCC -> REF_RESISTOR -> NTC -> GND
-//    // ²âÁ¿µÄÊÇNTCÁ½¶ËµÄµçÑ¹
+//    // å‡è®¾ä½¿ç”¨åˆ†å‹ç”µè·¯ï¼šVCC -> REF_RESISTOR -> NTC -> GND
+//    // æµ‹é‡çš„æ˜¯NTCä¸¤ç«¯çš„ç”µå‹
 //    
-//    // ¼ÆËãNTCµç×èÖµ: R_ntc = (V_ntc * R_ref) / (VCC - V_ntc)
-//    // ÕâÀï¼ÙÉèVCC = 3.3V£¬µ«Êµ¼ÊÓ¦¸ù¾İµçÂ·µ÷Õû
+//    // è®¡ç®—NTCç”µé˜»å€¼: R_ntc = (V_ntc * R_ref) / (VCC - V_ntc)
+//    // è¿™é‡Œå‡è®¾VCC = 3.3Vï¼Œä½†å®é™…åº”æ ¹æ®ç”µè·¯è°ƒæ•´
 //    const float VCC = 4.0f;
 //    
 //    if (voltage >= VCC) {
-//        return 0.0f; // ±ÜÃâ³ıÒÔÁã
+//        return 0.0f; // é¿å…é™¤ä»¥é›¶
 //    }
 //    
 //    return (voltage * REF_RESISTOR) / (VCC - voltage);
 //}
 
-//// ¸ù¾İNTCµç×è¼ÆËãÎÂ¶È£¨Ê¹ÓÃSteinhart-Hart·½³Ì£©
+//// æ ¹æ®NTCç”µé˜»è®¡ç®—æ¸©åº¦ï¼ˆä½¿ç”¨Steinhart-Hartæ–¹ç¨‹ï¼‰
 //float CalculateNTCTemperature(float resistance) {
 //    if (resistance <= 0.0f) {
-//        return -273.15f; // ¾ø¶ÔÁã¶È£¬±íÊ¾´íÎó
+//        return -273.15f; // ç»å¯¹é›¶åº¦ï¼Œè¡¨ç¤ºé”™è¯¯
 //    }
 //    
-//    // Steinhart-Hart·½³Ì: 1/T = 1/T0 + (1/B) * ln(R/R0)
-//    // ÆäÖĞ:
-//    // T - ¿ª¶ûÎÄÎÂ¶È
-//    // T0 - ²Î¿¼ÎÂ¶È (25¡ãC = 298.15K)
-//    // R - µ±Ç°µç×è
-//    // R0 - ²Î¿¼µç×è (10K¦¸)
-//    // B - BetaÖµ (3435)
+//    // Steinhart-Hartæ–¹ç¨‹: 1/T = 1/T0 + (1/B) * ln(R/R0)
+//    // å…¶ä¸­:
+//    // T - å¼€å°”æ–‡æ¸©åº¦
+//    // T0 - å‚è€ƒæ¸©åº¦ (25Â°C = 298.15K)
+//    // R - å½“å‰ç”µé˜»
+//    // R0 - å‚è€ƒç”µé˜» (10KÎ©)
+//    // B - Betaå€¼ (3435)
 //    
 //    float steinhart;
 //    steinhart = resistance / NTC_R25;             // (R/R0)
 //    steinhart = log(steinhart);                   // ln(R/R0)
 //    steinhart /= NTC_BETA;                        // 1/B * ln(R/R0)
 //    steinhart += 1.0 / NTC_T25;                   // 1/T0 + 1/B * ln(R/R0)
-//    steinhart = 1.0 / steinhart;                  // ¼ÆËã¿ª¶ûÎÄÎÂ¶È
+//    steinhart = 1.0 / steinhart;                  // è®¡ç®—å¼€å°”æ–‡æ¸©åº¦
 //    
-//    return steinhart - 273.15;                    // ×ª»»ÎªÉãÊÏ¶È
+//    return steinhart - 273.15;                    // è½¬æ¢ä¸ºæ‘„æ°åº¦
 //}
 
 
 
 
-//// ¼òµ¥µÄADS1118¶ÁÈ¡º¯Êı£¨ÔÚÖ÷Ñ­»·ÖĞÊ¹ÓÃ£©
+//// ç®€å•çš„ADS1118è¯»å–å‡½æ•°ï¼ˆåœ¨ä¸»å¾ªç¯ä¸­ä½¿ç”¨ï¼‰
 //void Read_ADS1118_Direct(void) {
 //    uint16_t val0,val1,val2,val3;
 //    float voltage,voltage1,voltage2,voltage3;
@@ -144,159 +144,159 @@ uint32_t GetTick(void) {
 //    float voltage4,voltage5,voltage6,voltage7;
 //    
 //    /*
-//    // ¶ÁÈ¡SPI1µÄAIN0Í¨µÀ
+//    // è¯»å–SPI1çš„AIN0é€šé“
 //    val0 = ADS1118_ReadVotage_SPI1(ADS1118_CONFIG_AIN0);
-//    voltage = val0 * 0.125f; // ×ª»»ÎªmV
+//    voltage = val0 * 0.125f; // è½¬æ¢ä¸ºmV
 //    original_voltage10 = ConvertToOriginalVoltage(voltage / 1000.0f);
 //    
 //    
 //    Delay_ms(5);
-//     // ¶ÁÈ¡SPI1µÄAIN1Í¨µÀ
+//     // è¯»å–SPI1çš„AIN1é€šé“
 //    val1 = ADS1118_ReadVotage_SPI1(ADS1118_CONFIG_AIN1);
-//    voltage1 = val1 * 0.125f; // ×ª»»ÎªmV
+//    voltage1 = val1 * 0.125f; // è½¬æ¢ä¸ºmV
 //    original_voltage11 = ConvertToOriginalVoltage(voltage / 1000.0f);
 //    
 //    Delay_ms(5);
-//     // ¶ÁÈ¡SPI1µÄAIN2Í¨µÀ
+//     // è¯»å–SPI1çš„AIN2é€šé“
 //    val2 = ADS1118_ReadVotage_SPI1(ADS1118_CONFIG_AIN2);
-//    voltage2 = val2 * 0.125f; // ×ª»»ÎªmV
+//    voltage2 = val2 * 0.125f; // è½¬æ¢ä¸ºmV
 //    original_voltage12 = ConvertToOriginalVoltage(voltage / 1000.0f);
 //    
 //    Delay_ms(5);
-//     // ¶ÁÈ¡SPI1µÄAIN3Í¨µÀ
+//     // è¯»å–SPI1çš„AIN3é€šé“
 //    val3 = ADS1118_ReadVotage_SPI1(ADS1118_CONFIG_AIN3);
-//    voltage3 = val3 * 0.125f; // ×ª»»ÎªmV
+//    voltage3 = val3 * 0.125f; // è½¬æ¢ä¸ºmV
 //    original_voltage13 = ConvertToOriginalVoltage(voltage / 1000.0f);
 //    
 //    */
 //    
 //    /*
-//    // ¶ÁÈ¡SPI1µÄAIN0Í¨µÀ
+//    // è¯»å–SPI1çš„AIN0é€šé“
 //    val4 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN0);
-//    voltage4 = val4 * 0.125f; // ×ª»»ÎªmV
+//    voltage4 = val4 * 0.125f; // è½¬æ¢ä¸ºmV
 //    original_voltage14 = ConvertToOriginalVoltage(voltage / 1000.0f);
 //    
 //    
 //    Delay_ms(5);
 //   
-//   // ¶ÁÈ¡SPI1µÄAIN1Í¨µÀ
+//   // è¯»å–SPI1çš„AIN1é€šé“
 //    val5 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN1);
-//    voltage5 = val5 * 0.125f; // ×ª»»ÎªmV
+//    voltage5 = val5 * 0.125f; // è½¬æ¢ä¸ºmV
 //    original_voltage15 = ConvertToOriginalVoltage(voltage / 1000.0f);
 //    
 //    Delay_ms(5);
 //    */
-//     // ¶ÁÈ¡SPI1µÄAIN2Í¨µÀ
+//     // è¯»å–SPI1çš„AIN2é€šé“
 //    val6 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN2);
-//    voltage6 = val6 * 0.125f; // ×ª»»ÎªmV
-//    original_voltage16 = voltage6 / 1000.0f; // ×ª»»ÎªV
+//    voltage6 = val6 * 0.125f; // è½¬æ¢ä¸ºmV
+//    original_voltage16 = voltage6 / 1000.0f; // è½¬æ¢ä¸ºV
 //   //// original_voltage16 = ConvertToOriginalVoltage(voltage / 1000.0f);
 //   
-//    // ¼ÆËãNTCµç×èÖµ
+//    // è®¡ç®—NTCç”µé˜»å€¼
 //    float ntc_resistance = CalculateNTCResistance(original_voltage16);
 //    
-//    // ¼ÆËãÎÂ¶ÈÖµ
+//    // è®¡ç®—æ¸©åº¦å€¼
 //    temperature = CalculateNTCTemperature(ntc_resistance);
 //    
 //    Delay_ms(5);
 //   /* 
-//   // ¶ÁÈ¡SPI1µÄAIN3Í¨µÀ
+//   // è¯»å–SPI1çš„AIN3é€šé“
 //    val7 = ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN3);
-//    voltage7 = val7 * 0.125f; // ×ª»»ÎªmV
+//    voltage7 = val7 * 0.125f; // è½¬æ¢ä¸ºmV
 //    original_voltage17 = ConvertToOriginalVoltage(voltage / 1000.0f);
 //    
 //    
 //    
-//    // ´òÓ¡½á¹û
+//    // æ‰“å°ç»“æœ
 //    Serial_SendString("ADC Value0: ");
 //    Serial_SendNumber(val0);
 //    Serial_SendString(" (");
-//    Serial_SendFloat(voltage, 1); // ÏÔÊ¾mVÖµ£¬±£Áô1Î»Ğ¡Êı
+//    Serial_SendFloat(voltage, 1); // æ˜¾ç¤ºmVå€¼ï¼Œä¿ç•™1ä½å°æ•°
 //    Serial_SendString("mV, ");
-//  ////  Serial_SendFloat(original_voltage10, 3); // ÏÔÊ¾VÖµ£¬±£Áô3Î»Ğ¡Êı
+//  ////  Serial_SendFloat(original_voltage10, 3); // æ˜¾ç¤ºVå€¼ï¼Œä¿ç•™3ä½å°æ•°
 //  // // Serial_SendString("V)\r\n");
 //    Serial_SendString("\r\n");
 //    
-//     // ´òÓ¡½á¹û
+//     // æ‰“å°ç»“æœ
 //    Serial_SendString("ADC Value1: ");
 //    Serial_SendNumber(val1);
 //    Serial_SendString(" (");
-//    Serial_SendFloat(voltage1, 1); // ÏÔÊ¾mVÖµ£¬±£Áô1Î»Ğ¡Êı
+//    Serial_SendFloat(voltage1, 1); // æ˜¾ç¤ºmVå€¼ï¼Œä¿ç•™1ä½å°æ•°
 //    Serial_SendString("mV, ");
-//    ////Serial_SendFloat(original_voltage11, 3); // ÏÔÊ¾VÖµ£¬±£Áô3Î»Ğ¡Êı
+//    ////Serial_SendFloat(original_voltage11, 3); // æ˜¾ç¤ºVå€¼ï¼Œä¿ç•™3ä½å°æ•°
 //   //// Serial_SendString("V)\r\n");
 //    Serial_SendString("\r\n");
 //   
 //    
-//     // ´òÓ¡½á¹û
+//     // æ‰“å°ç»“æœ
 //    Serial_SendString("ADC Value2: ");
 //    Serial_SendNumber(val2);
 //    Serial_SendString(" (");
-//    Serial_SendFloat(voltage2, 1); // ÏÔÊ¾mVÖµ£¬±£Áô1Î»Ğ¡Êı
+//    Serial_SendFloat(voltage2, 1); // æ˜¾ç¤ºmVå€¼ï¼Œä¿ç•™1ä½å°æ•°
 //    Serial_SendString("mV, ");
-//    ////Serial_SendFloat(original_voltage12, 3); // ÏÔÊ¾VÖµ£¬±£Áô3Î»Ğ¡Êı
+//    ////Serial_SendFloat(original_voltage12, 3); // æ˜¾ç¤ºVå€¼ï¼Œä¿ç•™3ä½å°æ•°
 //   //// Serial_SendString("V)\r\n");
 //    Serial_SendString("\r\n");
 //    
-//     // ´òÓ¡½á¹û
+//     // æ‰“å°ç»“æœ
 //    Serial_SendString("ADC Value3: ");
 //    Serial_SendNumber(val3);
 //    Serial_SendString(" (");
-//    Serial_SendFloat(voltage3, 1); // ÏÔÊ¾mVÖµ£¬±£Áô1Î»Ğ¡Êı
+//    Serial_SendFloat(voltage3, 1); // æ˜¾ç¤ºmVå€¼ï¼Œä¿ç•™1ä½å°æ•°
 //    Serial_SendString("mV, ");
-//    //// Serial_SendFloat(original_voltage13, 3); // ÏÔÊ¾VÖµ£¬±£Áô3Î»Ğ¡Êı
+//    //// Serial_SendFloat(original_voltage13, 3); // æ˜¾ç¤ºVå€¼ï¼Œä¿ç•™3ä½å°æ•°
 //   //// Serial_SendString("V)\r\n");
 //    Serial_SendString("\r\n");
 //    
 //    */
 //    /*
-//    // ´òÓ¡½á¹û
+//    // æ‰“å°ç»“æœ
 //    Serial_SendString("ADC Value4: ");
 //    Serial_SendNumber(val4);
 //    Serial_SendString(" (");
-//    Serial_SendFloat(voltage4, 1); // ÏÔÊ¾mVÖµ£¬±£Áô1Î»Ğ¡Êı
+//    Serial_SendFloat(voltage4, 1); // æ˜¾ç¤ºmVå€¼ï¼Œä¿ç•™1ä½å°æ•°
 //    Serial_SendString("mV, ");
-//  ////  Serial_SendFloat(original_voltage10, 3); // ÏÔÊ¾VÖµ£¬±£Áô3Î»Ğ¡Êı
+//  ////  Serial_SendFloat(original_voltage10, 3); // æ˜¾ç¤ºVå€¼ï¼Œä¿ç•™3ä½å°æ•°
 //  // // Serial_SendString("V)\r\n");
 //    Serial_SendString("\r\n");
 //    
-//     // ´òÓ¡½á¹û
+//     // æ‰“å°ç»“æœ
 //    Serial_SendString("ADC Value5: ");
 //    Serial_SendNumber(val5);
 //    Serial_SendString(" (");
-//    Serial_SendFloat(voltage5, 1); // ÏÔÊ¾mVÖµ£¬±£Áô1Î»Ğ¡Êı
+//    Serial_SendFloat(voltage5, 1); // æ˜¾ç¤ºmVå€¼ï¼Œä¿ç•™1ä½å°æ•°
 //    Serial_SendString("mV, ");
-//    ////Serial_SendFloat(original_voltage11, 3); // ÏÔÊ¾VÖµ£¬±£Áô3Î»Ğ¡Êı
+//    ////Serial_SendFloat(original_voltage11, 3); // æ˜¾ç¤ºVå€¼ï¼Œä¿ç•™3ä½å°æ•°
 //   //// Serial_SendString("V)\r\n");
 //    Serial_SendString("\r\n");
 //   */
 //    
-//     // ´òÓ¡½á¹û
+//     // æ‰“å°ç»“æœ
 //    Serial_SendString("ADC Value6: ");
 //   // Serial_SendNumber(val6);
 //    Serial_SendString(" (");
-//    Serial_SendFloat(voltage6, 1); // ÏÔÊ¾mVÖµ£¬±£Áô1Î»Ğ¡Êı
+//    Serial_SendFloat(voltage6, 1); // æ˜¾ç¤ºmVå€¼ï¼Œä¿ç•™1ä½å°æ•°
 //    Serial_SendString("mV, ");
-//    Serial_SendFloat(original_voltage16, 3); // ÏÔÊ¾VÖµ£¬±£Áô3Î»Ğ¡Êı
+//    Serial_SendFloat(original_voltage16, 3); // æ˜¾ç¤ºVå€¼ï¼Œä¿ç•™3ä½å°æ•°
 //    Serial_SendString("V) ");
 //    Serial_SendString("NTC Resistance: ");
-//    Serial_SendFloat(ntc_resistance, 1); // ÏÔÊ¾µç×èÖµ£¬±£Áô1Î»Ğ¡Êı
-//    Serial_SendString("¦¸ ");
+//    Serial_SendFloat(ntc_resistance, 1); // æ˜¾ç¤ºç”µé˜»å€¼ï¼Œä¿ç•™1ä½å°æ•°
+//    Serial_SendString("Î© ");
 //    Serial_SendString("Temperature: ");
-//    Serial_SendFloat(temperature, 1); // ÏÔÊ¾ÎÂ¶ÈÖµ£¬±£Áô1Î»Ğ¡Êı
-//    Serial_SendString("¡ãC\r\n");
+//    Serial_SendFloat(temperature, 1); // æ˜¾ç¤ºæ¸©åº¦å€¼ï¼Œä¿ç•™1ä½å°æ•°
+//    Serial_SendString("Â°C\r\n");
 //    
 //    
 //   // Serial_SendString("V)\r\n");
 //    Serial_SendString("\r\n");
 //    /*
-//     // ´òÓ¡½á¹û
+//     // æ‰“å°ç»“æœ
 //    Serial_SendString("ADC Value7: ");
 //    Serial_SendNumber(val7);
 //    Serial_SendString(" (");
-//    Serial_SendFloat(voltage7, 1); // ÏÔÊ¾mVÖµ£¬±£Áô1Î»Ğ¡Êı
+//    Serial_SendFloat(voltage7, 1); // æ˜¾ç¤ºmVå€¼ï¼Œä¿ç•™1ä½å°æ•°
 //    Serial_SendString("mV, ");
-//    //// Serial_SendFloat(original_voltage13, 3); // ÏÔÊ¾VÖµ£¬±£Áô3Î»Ğ¡Êı
+//    //// Serial_SendFloat(original_voltage13, 3); // æ˜¾ç¤ºVå€¼ï¼Œä¿ç•™3ä½å°æ•°
 //   //// Serial_SendString("V)\r\n");
 //    Serial_SendString("\r\n");
 //    */
@@ -305,23 +305,23 @@ uint32_t GetTick(void) {
 
 
 extern uint8_t timer3_flag;
-// Ê±ÖÓÕï¶Ïº¯Êı
+// æ—¶é’Ÿè¯Šæ–­å‡½æ•°
 
 int main(void)
 {  
    SystemInit();
     SysTick_Init();
     
-    // ¼ì²é¿´ÃÅ¹·¸´Î»
+    // æ£€æŸ¥çœ‹é—¨ç‹—å¤ä½
  ////   Check_IWDG_Reset();
     
-    // ³õÊ¼»¯¿´ÃÅ¹·£¨2Ãë³¬Ê±£©
+    // åˆå§‹åŒ–çœ‹é—¨ç‹—ï¼ˆ2ç§’è¶…æ—¶ï¼‰
    //// IWDG_Init(2000);
     
     
 
 
-// ³õÊ¼»¯GPIO
+// åˆå§‹åŒ–GPIO
     MGPIOO_Init();
     ADS1118_Init();
     
@@ -331,7 +331,7 @@ int main(void)
     Serial_Init();
 //    Serial_Init_1();
     Serial_Init_2();
-    // ³õÊ¼»¯USART1 (²¨ÌØÂÊ115200)
+    // åˆå§‹åŒ–USART1 (æ³¢ç‰¹ç‡115200)
     //Serial_Init_1();
    
   
@@ -340,14 +340,14 @@ int main(void)
 ////    Serial_SendString_2("3System Boot OK\r\n");
     
     
-    // ÎÂÊª¶È´«¸ĞÆ÷³õÊ¼»¯
+    // æ¸©æ¹¿åº¦ä¼ æ„Ÿå™¨åˆå§‹åŒ–
 ////    HTM440_Init();
 ////    
-////    // ÉèÖÃÎÂÊª¶È¶ÁÈ¡¼ä¸ô£¨2Ãë£©
+////    // è®¾ç½®æ¸©æ¹¿åº¦è¯»å–é—´éš”ï¼ˆ2ç§’ï¼‰
 ////    HTM440_SetReadInterval(2000);
     
-////     // ³õÊ¼»¯¸´ºÏÂË²¨½á¹¹Ìå
-    Initialize_Composite_Filter_Structs();
+////     // åˆå§‹åŒ–å¤åˆæ»¤æ³¢ç»“æ„ä½“
+    // ADC scanning uses raw conversions; no legacy thermistor filter heap needed.
 
 //// 
 ////    
@@ -369,59 +369,59 @@ uint16_t val;
 	while(1)
 	{
         
-         // ±ØĞëÌí¼ÓModbusÂÖÑ¯
+         // å¿…é¡»æ·»åŠ Modbusè½®è¯¢
      ////   ModbusRTU_Poll();
         
         
 //        Delay_us(100);
-//		val = ADS1118_ReadVotage_SPI1_Chip1(0x44eb);//Ê¹ÓÃAIN0-GND
+//		val = ADS1118_ReadVotage_SPI1_Chip1(0x44eb);//ä½¿ç”¨AIN0-GND
 //		Delay_ms(3000);
 //		Serial_SendString_2("mA(");
 //    Serial_SendNumber_2(val);
 //    Serial_SendString_2(",");
 //    
 //		value = val*0.0625;
-//        Serial_SendFloat(value, 3);  // Ìí¼ÓµçÑ¹ÏÔÊ¾£¬3Î»Ğ¡Êı
+//        Serial_SendFloat(value, 3);  // æ·»åŠ ç”µå‹æ˜¾ç¤ºï¼Œ3ä½å°æ•°
 //    Serial_SendString_2("V) ");
 		 
         
         
-////        // ¼ì²é¶¨Ê±Æ÷±êÖ¾
+////        // æ£€æŸ¥å®šæ—¶å™¨æ ‡å¿—
 ////    if(timer3_flag) {
 ////        timer3_flag = 0;
-////        Control_Task();  // ÔÚÖ÷Ñ­»·ÖĞÖ´ĞĞ¿ØÖÆÈÎÎñ
+////        Control_Task();  // åœ¨ä¸»å¾ªç¯ä¸­æ‰§è¡Œæ§åˆ¶ä»»åŠ¡
 ////    }
 ////        
-////        // Ã¿Ãë·¢ËÍÒ»´ÎCANÏûÏ¢
+////        // æ¯ç§’å‘é€ä¸€æ¬¡CANæ¶ˆæ¯
 ////        if(GetTick() - last_send_time >= 10) {
 ////          last_send_time = GetTick();
-////        ////   CAN_Send_Example(); // ·¢ËÍCANÏûÏ¢
+////        ////   CAN_Send_Example(); // å‘é€CANæ¶ˆæ¯
 ////            
-////            // CAN·¢ËÍºóÎ¹¹·
+////            // CANå‘é€åå–‚ç‹—
 ////           //// IWDG_Feed();
 ////       }
         
         
         uint32_t current_time = task_tim1.time_1ms;
         
-        // 100msÈÎÎñ
+        // 100msä»»åŠ¡
         if(current_time - last_100ms >= 100) {
             last_100ms = current_time;
             task_100ms();
         }
         
-        // 200msÈÎÎñ
+        // 200msä»»åŠ¡
         if(current_time - last_200ms >= 200) {
             last_200ms = current_time;
             task_200ms();
         }
         
         
-        // Ö±½Ó¶ÁÈ¡ADS1118
+        // ç›´æ¥è¯»å–ADS1118
         ////Read_ADS1118_Direct();
         
-         // ¶ÌÔİÑÓÊ±
-        Delay_us(1); // Ã¿haoÃë¶ÁÈ¡Ò»´Î
+         // çŸ­æš‚å»¶æ—¶
+        Delay_us(1); // æ¯haoç§’è¯»å–ä¸€æ¬¡
     
 	}
 }
