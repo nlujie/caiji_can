@@ -39,7 +39,7 @@ void DMA_Configuration_USART1(void)
     USART_DMACmd(USART1, USART_DMAReq_Rx, ENABLE);
 }
 
-void Serial_Init()
+void Serial_Init(void)
 {
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
@@ -232,7 +232,7 @@ void DMA_TX_Configuration_USART1(void)
     NVIC_Init(&NVIC_InitStructure);
 }
 
-void Serial_Init()
+void Serial_Init(void)
 {
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
