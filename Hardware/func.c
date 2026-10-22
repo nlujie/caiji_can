@@ -134,7 +134,7 @@ const Chip_Config_t chip_configs[] = {
     },
     // SPI1第二个芯片配置 (PA8)
     {
-        "SPI1-Chip2(PA8)",
+        "SPI1-Chip2(PA3)",
         {
             {SENSOR_4_20MA, "4-20mA"},     // AIN0
             {SENSOR_4_20MA, "4-20mA"},     // AIN1
@@ -450,6 +450,79 @@ void CAN_Send_All_ADC_Raw_Data(void) {
     can_data.channels = raw_adc_spi2;
     CAN_Send_ADC_Raw_Data(CAN_ID_SPI2_RAW, &can_data);
 }
+
+// Dedicated 4-20mA CAN frames from the existing 100-ohm shunt:
+// ADS1118 1 count = 0.0625mV = 0.000625mA; CAN uses 0.01mA/LSB.
+// Invalid readings use 0xFFFF, never a misleading clipped 4mA/20mA.
+volatile uint8_t can_adc_current_valid_mask = 0u;
+volatile uint8_t can_adc_current_sample_sequence = 0u;
+volatile uint32_t can_adc_current_tx_busy_count = 0u;
+
+static uint16_t ADC_Current_0p01mA(uint16_t adc_code)
+{
+    if(adc_code < 6400u || adc_code > 32000u) {
+        return CAN_4_20MA_INVALID;
+    }
+    return (uint16_t)((adc_code + 8u) / 16u);
+}
+
+static void CAN_ADC_Pack_U16(CanTxMsg *tx, uint8_t slot, uint16_t value)
+{
+    tx->Data[slot * 2u] = (uint8_t)(value & 0xFFu);
+    tx->Data[slot * 2u + 1u] = (uint8_t)(value >> 8);
+}
+
+void CAN_Send_All_4_20mA(void)
+{
+    // ch0-6: flow1/flow2/pressure1/pressure2/pressure3/pressure4/pressure5.
+    uint16_t adc_codes[7] = {
+        filtered_adc_spi1_chip1_ain0, filtered_adc_spi1_chip1_ain1,
+        filtered_adc_spi1_chip2_ain0, filtered_adc_spi1_chip2_ain1,
+        filtered_adc_spi1_chip2_ain2, filtered_adc_spi2_ain1,
+        filtered_adc_spi2_ain2
+    };
+    uint16_t value[7];
+    uint8_t valid_mask = 0u;
+    uint8_t seq;
+    uint8_t i;
+    CanTxMsg tx;
+
+    for(i = 0u; i < 7u; ++i) {
+        value[i] = ADC_Current_0p01mA(adc_codes[i]);
+        if(value[i] != CAN_4_20MA_INVALID) {
+            valid_mask = (uint8_t)(valid_mask | (uint8_t)(1u << i));
+        }
+    }
+    seq = can_adc_current_sample_sequence++;
+    can_adc_current_valid_mask = valid_mask;
+    tx.ExtId = 0u;
+    tx.IDE = CAN_Id_Standard;
+    tx.RTR = CAN_RTR_Data;
+    tx.DLC = 8u;
+
+    // 0x120: ch0..ch3 (four 16-bit little-endian values).
+    tx.StdId = CAN_ID_4_20MA_0_3;
+    for(i = 0u; i < 4u; ++i) {
+        CAN_ADC_Pack_U16(&tx, i, value[i]);
+    }
+    // A returned mailbox is a queue success, not CAN peer acknowledgement.
+    if(CAN_Transmit(CAN1, &tx) == CAN_TxStatus_NoMailBox) {
+        can_adc_current_tx_busy_count++;
+    }
+    Delay_ms(2);
+
+    // 0x121: ch4..ch6, then all-channel valid bitmap + rolling sequence.
+    tx.StdId = CAN_ID_4_20MA_4_6;
+    for(i = 0u; i < 3u; ++i) {
+        CAN_ADC_Pack_U16(&tx, i, value[i + 4u]);
+    }
+    tx.Data[6] = valid_mask;
+    tx.Data[7] = seq;
+    if(CAN_Transmit(CAN1, &tx) == CAN_TxStatus_NoMailBox) {
+        can_adc_current_tx_busy_count++;
+    }
+}
+
 uint16_t adc_value,a1,a2,a3,a4,adc_value1,adc_value2,adc_value3,adc_value4,adc_value5,adc_value6,adc_value7,adc_value8;
 // 使用Read_ADS1118_Direct函数读取所有传感器数据
 void Read_ADS1118_Direct(void) {
@@ -700,7 +773,7 @@ void Read_ADS1118_Direct(void) {
     a4 = ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN3);
     
     float comp_filtered_adc3 = apply_composite_filter(&comp_filter_spi1_chip1_ain3, (float)a4);
-    filtered_adc_spi1_chip2_ain3 = (uint16_t)comp_filtered_adc3;
+    filtered_adc_spi1_chip1_ain3 = (uint16_t)comp_filtered_adc3;
     
     if(filtered_adc_spi1_chip1_ain3 >= 6400 && filtered_adc_spi1_chip1_ain3 <= 32000) {
         raw_adc_spi1_chip1.ain3 = filtered_adc_spi1_chip1_ain3;
@@ -991,7 +1064,7 @@ void Read_ADS1118_Direct(void) {
     filtered_adc_spi1_chip2_ain3 = (uint16_t)comp_filtered_adc7;
     
     if(filtered_adc_spi1_chip2_ain3 >= 6400 && filtered_adc_spi1_chip2_ain3 <= 32000) {
-        raw_adc_spi1_chip1.ain3 = filtered_adc_spi1_chip2_ain3;
+        raw_adc_spi1_chip2.ain3 = filtered_adc_spi1_chip2_ain3;
         voltage_mv = filtered_adc_spi1_chip2_ain3 * ADC_CONVERSION_FACTOR;
         voltage_v = voltage_mv / 1000.0f;
         float resistance3 = CalculateNTCResistance(voltage_v);
@@ -1626,7 +1699,8 @@ void task_100ms(void) {
 // 200ms任务
 void task_200ms(void) {
     Read_ADS1118_Direct();
-    CAN_Send_All_ADC_Raw_Data();
+    CAN_Send_All_ADC_Raw_Data();  // Retain the 12 ADC raw values (0x110-0x112).
+    CAN_Send_All_4_20mA();        // Seven 4-20mA currents (0x120-0x121).
 //     HTM440_Task();
     
     // 空任务
