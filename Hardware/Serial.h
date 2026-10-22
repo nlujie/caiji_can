@@ -3,7 +3,7 @@
 #define __SERIAL_H
 #include <stdio.h>
 
-void Serial_Init();
+void Serial_Init(void);
 void Serial_SendByte(uint8_t Byte);
 void Serial_SendArray(uint8_t *array, uint16_t length);
 void Serial_SendString(char *string);
@@ -19,7 +19,7 @@ uint8_t Serial_GetRxFlag(void);
 #define __SERIAL_H
 #include <stdio.h>
 
-void Serial_Init();
+void Serial_Init(void);
 void Serial_SendByte(uint8_t Byte);
 void Serial_SendNumber(int32_t number);
 void Serial_SendArray(uint8_t *array, uint16_t length);
