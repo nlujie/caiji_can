@@ -1,5 +1,6 @@
 #ifndef __ADC420_APP_H
 #define __ADC420_APP_H
+
 #include "stm32f10x.h"
 
 #define ADC420_CHANNEL_COUNT 10U
@@ -8,6 +9,10 @@
 extern volatile uint16_t adc420_raw[ADC420_CHANNEL_COUNT];
 extern volatile uint16_t adc420_millivolt[ADC420_CHANNEL_COUNT];
 extern volatile uint16_t adc420_centi_ma[ADC420_CHANNEL_COUNT];
+
+/* Debug counters. */
+extern volatile uint32_t adc420_spi_timeout_count;
+extern volatile uint32_t adc420_scan_count;
 
 void ADC420_Init(void);
 void ADC420_ScanAll(uint16_t current_centi_ma[ADC420_CHANNEL_COUNT]);
