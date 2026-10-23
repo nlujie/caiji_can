@@ -55,6 +55,11 @@ static uint8_t spi_transfer(SPI_TypeDef *spi, uint8_t data, uint8_t *received)
 {
     uint32_t timeout = 100000U;
 
+    /* Clear a stale receive byte if the preceding transfer timed out. */
+    if (SPI_I2S_GetFlagStatus(spi, SPI_I2S_FLAG_RXNE) != RESET) {
+        (void)SPI_I2S_ReceiveData(spi);
+    }
+
     while (SPI_I2S_GetFlagStatus(spi, SPI_I2S_FLAG_TXE) == RESET) {
         if (timeout == 0U) {
             adc420_spi_timeout_count++;
