@@ -208,13 +208,13 @@ uint8_t ADC420_SendCanFrames(void)
 
     if (adc420_scan_ok == 0U)
     {
-        DebugUart_Printf("[CAN-TX] SKIP: ADC scan failed; no frames sent.\\r\\n");
+        DebugUart_Printf("[CAN-TX] SKIP: ADC scan failed; no frames sent.\r\n");
         return 0U;
     }
 
     if (can_init_ok == 0U)
     {
-        DebugUart_Printf("[CAN-TX] SKIP: CAN initialization failed; no frames sent.\\r\\n");
+        DebugUart_Printf("[CAN-TX] SKIP: CAN initialization failed; no frames sent.\r\n");
         return 0U;
     }
 
@@ -257,7 +257,7 @@ uint8_t ADC420_SendCanFrames(void)
             }
 
             DebugUart_Printf(
-                "[CAN-TX] ID=0x%03X DLC=%u DATA=%02X %02X %02X %02X %02X %02X %02X %02X RESULT=%s(%u)\\r\\n",
+                "[CAN-TX] ID=0x%03X DLC=%u DATA=%02X %02X %02X %02X %02X %02X %02X %02X RESULT=%s(%u)\r\n",
                 (unsigned int)can_id,
                 (unsigned int)tx.DLC,
                 (unsigned int)tx.Data[0],

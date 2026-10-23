@@ -1,7 +1,6 @@
 #include "stm32f10x.h"
 #include "system_stm32f10x.h"
 #include "debug_uart.h"
-#include "system_stm32f10x.h"
 #include "Delay.h"
 #include "ads1118_spi.h"
 #include "can.h"
