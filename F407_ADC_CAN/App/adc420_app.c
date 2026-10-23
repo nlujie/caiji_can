@@ -1,6 +1,7 @@
 #include "adc420_app.h"
 #include "adc420_spi.h"
 #include "adc420_can.h"
+#include "timebase.h"
 #include <stdint.h>
 
 /* Mapping follows "使用说明" section 2 and the board schematic.
@@ -26,6 +27,20 @@ volatile uint8_t adc420_sequence = 0U;
 volatile uint32_t adc420_scan_count = 0UL;
 volatile uint8_t adc420_last_can_failures = 0U;
 
+/* Dedicated live diagnostics; kept volatile so Keil Watch can inspect them. */
+volatile uint8_t adc420_debug_scan_in_progress = 0U;
+volatile uint8_t adc420_debug_current_index = 0xFFU;
+volatile uint8_t adc420_debug_current_board_channel = 0U;
+volatile uint8_t adc420_debug_current_chip = 0U;
+volatile uint8_t adc420_debug_current_ain = 0U;
+volatile uint8_t adc420_debug_last_spi_ok = 0U;
+volatile uint8_t adc420_debug_last_spi_state = 0U;
+volatile int16_t adc420_debug_last_raw = 0;
+volatile uint16_t adc420_debug_last_current_ua = 0U;
+volatile uint32_t adc420_debug_scan_duration_ms = 0UL;
+volatile uint32_t adc420_debug_channel_success_count[ADC420_COUNT] = {0UL};
+volatile uint32_t adc420_debug_channel_fail_count[ADC420_COUNT] = {0UL};
+
 /* ADS1118 +/-2.048 V: 1 count = 62.5 uV.
    With 100 ohms, 1 count = 0.625 uA. */
 uint16_t ADC420_Convert_uA(int16_t raw)
@@ -46,12 +61,29 @@ void ADC420_App_ScanAndSend(void)
     uint16_t valid = 0U, fault = 0U;
     int16_t sample;
     uint8_t good;
+    uint32_t scan_start_ms = Timebase_Millis();
+
+    adc420_debug_scan_in_progress = 1U;
+    adc420_debug_current_index = 0xFFU;
+    adc420_debug_last_spi_ok = 0U;
+    adc420_debug_last_spi_state = 0U;
 
     for (i = 0U; i < ADC420_COUNT; i++) {
+        adc420_debug_current_index = i;
+        adc420_debug_current_board_channel = adc420_map[i].board_channel;
+        adc420_debug_current_chip = adc420_map[i].chip;
+        adc420_debug_current_ain = adc420_map[i].ain;
+
         good = ADC420_SPI_Read(adc420_map[i].chip, adc420_map[i].ain, &sample);
+        adc420_debug_last_spi_ok = good;
+        adc420_debug_last_spi_state = adc420_spi_state[adc420_map[i].chip];
+
         if (good && sample >= 0) {
             adc420_raw[i] = sample;
             adc420_current_ua[i] = ADC420_Convert_uA(sample);
+            adc420_debug_last_raw = sample;
+            adc420_debug_last_current_ua = adc420_current_ua[i];
+            adc420_debug_channel_success_count[i]++;
             valid |= (uint16_t)(1U << i);
             if (adc420_current_ua[i] < 3600U ||
                 adc420_current_ua[i] > 21000U) {
@@ -60,6 +92,9 @@ void ADC420_App_ScanAndSend(void)
         } else {
             adc420_raw[i] = (int16_t)-32768;
             adc420_current_ua[i] = 0xFFFFU;
+            adc420_debug_last_raw = (int16_t)-32768;
+            adc420_debug_last_current_ua = 0xFFFFU;
+            adc420_debug_channel_fail_count[i]++;
             fault |= (uint16_t)(1U << i);
         }
     }
@@ -91,4 +126,8 @@ void ADC420_App_ScanAndSend(void)
     data[6] = 1U; /* protocol version */
     data[7] = 0U;
     (void)ADC420_CAN_Send(ADC420_CAN_ID_STATUS, data, 8U);
+
+    adc420_debug_current_index = 0xFFU; /* idle/not scanning a channel */
+    adc420_debug_scan_duration_ms = Timebase_Millis() - scan_start_ms;
+    adc420_debug_scan_in_progress = 0U;
 }

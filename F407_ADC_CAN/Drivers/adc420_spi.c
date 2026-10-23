@@ -19,6 +19,12 @@ volatile uint16_t adc420_spi_cfg_echo[3] = {0U, 0U, 0U};
 volatile uint16_t adc420_spi_previous_result[3] = {0U, 0U, 0U};
 volatile uint32_t adc420_spi_success_count[3] = {0UL, 0UL, 0UL};
 
+volatile uint8_t adc420_debug_spi_init_done = 0U;
+volatile uint8_t adc420_debug_spi_current_chip = 0xFFU;
+volatile uint8_t adc420_debug_spi_current_channel = 0xFFU;
+volatile uint8_t adc420_debug_spi_last_error = 0U;
+volatile uint32_t adc420_debug_cs_gpio_odr = 0UL;
+
 static void adc420_spin_us(uint32_t us)
 {
     volatile uint32_t n;
@@ -32,6 +38,7 @@ static void adc420_deselect_all(void)
 {
     /* PB0=1, PB1=1, PB10=1 means all three ADS1118 chips deselected. */
     GPIOB_BSRR = (1UL << 0) | (1UL << 1) | (1UL << 10);
+    adc420_debug_cs_gpio_odr = GPIOB_ODR;
 }
 
 static void adc420_select(uint8_t chip)
@@ -103,6 +110,7 @@ void ADC420_SPI_Init(void)
     (void)RCC_APB2ENR;
 
     adc420_deselect_all();
+    adc420_debug_cs_gpio_odr = GPIOB_ODR;
 
     pinmask = (3UL << 0) | (3UL << 2) | (3UL << 20);
     GPIOB_MODER = (GPIOB_MODER & ~pinmask) |
@@ -128,6 +136,8 @@ void ADC420_SPI_Init(void)
                (1UL << 8) | (1UL << 9); /* CPHA=1, master, /64, SSM+SSI */
     SPI1_CR1 |= (1UL << 6); /* SPE */
     adc420_spin_us(100UL);
+    adc420_debug_cs_gpio_odr = GPIOB_ODR;
+    adc420_debug_spi_init_done = 1U;
 }
 
 uint8_t ADC420_SPI_Read(uint8_t chip, uint8_t channel, int16_t *result)
@@ -135,7 +145,13 @@ uint8_t ADC420_SPI_Read(uint8_t chip, uint8_t channel, int16_t *result)
     uint16_t discarded = 0U, cfg, echo = 0U, data = 0U;
     uint8_t ok;
 
-    if (result == 0 || chip > ADC420_CHIP_O3 || channel > 3U) return 0U;
+    adc420_debug_spi_current_chip = chip;
+    adc420_debug_spi_current_channel = channel;
+    adc420_debug_spi_last_error = 0U;
+    if (result == 0 || chip > ADC420_CHIP_O3 || channel > 3U) {
+        adc420_debug_spi_last_error = 1U;
+        return 0U;
+    }
 
     /* AINx-to-GND mux; PGA +/-2.048 V; single-shot; 860 SPS.
        4-20 mA through 100 ohms gives 0.400-2.000 V (about 6400-32000 counts). */
@@ -151,6 +167,7 @@ uint8_t ADC420_SPI_Read(uint8_t chip, uint8_t channel, int16_t *result)
     adc420_deselect();
     if (!ok) {
         adc420_spi_state[chip] = 2U;
+        adc420_debug_spi_last_error = 2U;
         return 0U;
     }
 
@@ -158,6 +175,7 @@ uint8_t ADC420_SPI_Read(uint8_t chip, uint8_t channel, int16_t *result)
     adc420_spi_cfg_echo[chip] = echo;
     if (((uint16_t)(echo ^ cfg) & ADC420_ECHO_MASK) != 0U) {
         adc420_spi_state[chip] = 3U;
+        adc420_debug_spi_last_error = 3U;
         return 0U;
     }
 

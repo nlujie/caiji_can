@@ -25,6 +25,25 @@ extern volatile uint8_t adc420_sequence;
 extern volatile uint32_t adc420_scan_count;
 extern volatile uint8_t adc420_last_can_failures;
 
+/* Dedicated runtime diagnostics for Keil Watch window. */
+extern volatile uint8_t adc420_debug_init_stage;
+extern volatile uint32_t adc420_debug_system_clock_hz;
+extern volatile uint8_t adc420_debug_spi_init_ok;
+extern volatile uint8_t adc420_debug_can_init_ok;
+extern volatile uint32_t adc420_debug_main_loop_count;
+extern volatile uint8_t adc420_debug_scan_in_progress;
+extern volatile uint8_t adc420_debug_current_index;
+extern volatile uint8_t adc420_debug_current_board_channel;
+extern volatile uint8_t adc420_debug_current_chip;
+extern volatile uint8_t adc420_debug_current_ain;
+extern volatile uint8_t adc420_debug_last_spi_ok;
+extern volatile uint8_t adc420_debug_last_spi_state;
+extern volatile int16_t adc420_debug_last_raw;
+extern volatile uint16_t adc420_debug_last_current_ua;
+extern volatile uint32_t adc420_debug_scan_duration_ms;
+extern volatile uint32_t adc420_debug_channel_success_count[ADC420_COUNT];
+extern volatile uint32_t adc420_debug_channel_fail_count[ADC420_COUNT];
+
 uint16_t ADC420_Convert_uA(int16_t raw);
 void ADC420_App_ScanAndSend(void);
 

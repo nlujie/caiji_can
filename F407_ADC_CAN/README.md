@@ -58,7 +58,9 @@ ADS1118 选择 ±2.048 V 时，正向原始码每计数约为 62.5 µV。通过 
 
 ## Keil 调试变量
 
-在 Watch 1 中添加：
+已补充独立的 `adc420_debug_*` 实时监控变量，覆盖启动阶段、时钟、扫描进度、当前通道、逐通道成功/失败计数、片选 GPIO 输出状态、最近一次 CAN 报文及 CAN 硬件状态寄存器快照。可按 `F407_ADC_CAN/Debug/Watch_Variables.txt` 中的清单逐项加入 Keil 的 Watch 1。
+
+核心变量包括：
 
 - `adc420_raw[2]`：P1 / ADC_4 的 ADS1118 原始码。
 - `adc420_current_ua[2]`：P1 / ADC_4 换算后的电流，单位 µA。
