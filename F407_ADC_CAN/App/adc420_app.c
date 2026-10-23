@@ -4,18 +4,18 @@
 #include <stdint.h>
 
 /* Mapping follows "使用说明" section 2 and the board schematic.
-   The board routes N_O1/N_O2/N_O3 to different active levels. */
+   N_O1/N_O2/N_O3 GPIO chip selects are all active LOW (per user). */
 const ADC420_Mapping adc420_map[ADC420_COUNT] = {
-    { 2U, ADC420_CHIP_O2, 2U }, /* P10, ADC_2, N_O2 AIN2, PB1 HIGH */
-    { 3U, ADC420_CHIP_O2, 3U }, /* P11, ADC_3, N_O2 AIN3, PB1 HIGH */
+    { 2U, ADC420_CHIP_O2, 2U }, /* P10, ADC_2, N_O2 AIN2, PB1 LOW */
+    { 3U, ADC420_CHIP_O2, 3U }, /* P11, ADC_3, N_O2 AIN3, PB1 LOW */
     { 4U, ADC420_CHIP_O1, 0U }, /* P1,  ADC_4, N_O1 AIN0, PB0 LOW */
     { 5U, ADC420_CHIP_O1, 1U }, /* P2,  ADC_5, N_O1 AIN1, PB0 LOW */
     { 6U, ADC420_CHIP_O1, 3U }, /* P4,  ADC_6, N_O1 AIN3, PB0 LOW */
     { 7U, ADC420_CHIP_O1, 2U }, /* P5,  ADC_7, N_O1 AIN2, PB0 LOW */
-    { 8U, ADC420_CHIP_O3, 2U }, /* P9,  ADC_8, N_O3 AIN2, PB10 HIGH */
-    { 9U, ADC420_CHIP_O3, 1U }, /* P7,  ADC_9, N_O3 AIN1, PB10 HIGH */
-    {10U, ADC420_CHIP_O3, 3U }, /* P8,  ADC_10,N_O3 AIN3, PB10 HIGH */
-    {11U, ADC420_CHIP_O3, 0U }  /* P6,  ADC_11,N_O3 AIN0, PB10 HIGH */
+    { 8U, ADC420_CHIP_O3, 2U }, /* P9,  ADC_8, N_O3 AIN2, PB10 LOW */
+    { 9U, ADC420_CHIP_O3, 1U }, /* P7,  ADC_9, N_O3 AIN1, PB10 LOW */
+    {10U, ADC420_CHIP_O3, 3U }, /* P8,  ADC_10,N_O3 AIN3, PB10 LOW */
+    {11U, ADC420_CHIP_O3, 0U }  /* P6,  ADC_11,N_O3 AIN0, PB10 LOW */
 };
 
 volatile int16_t adc420_raw[ADC420_COUNT];

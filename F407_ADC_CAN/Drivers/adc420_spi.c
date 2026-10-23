@@ -3,10 +3,10 @@
 #include "timebase.h"
 
 /*
- * PCB-specific chip select polarity, derived from the schematic:
+ * Board GPIO chip-select polarity confirmed by user (all active LOW):
  * N_O1: PB0 LOW selects (through ISO7741).
- * N_O2: PB1 HIGH selects (through the optocoupler path).
- * N_O3: PB10 HIGH selects (through the optocoupler path).
+ * N_O2: PB1 LOW selects (through the optocoupler path).
+ * N_O3: PB10 LOW selects (through the optocoupler path).
  * SPI1: PA5=SCK, PA6=MISO, PA7=MOSI; SPI mode 1.
  */
 #define ADC420_SPI_TIMEOUT_LOOPS 40000UL
@@ -30,8 +30,8 @@ static void adc420_spin_us(uint32_t us)
 
 static void adc420_deselect_all(void)
 {
-    /* PB0=1, PB1=0, PB10=0 means all three ADS1118 chips deselected. */
-    GPIOB_BSRR = (1UL << 0) | (1UL << (1U + 16U)) | (1UL << (10U + 16U));
+    /* PB0=1, PB1=1, PB10=1 means all three ADS1118 chips deselected. */
+    GPIOB_BSRR = (1UL << 0) | (1UL << 1) | (1UL << 10);
 }
 
 static void adc420_select(uint8_t chip)
@@ -40,9 +40,9 @@ static void adc420_select(uint8_t chip)
     if (chip == ADC420_CHIP_O1) {
         GPIOB_BSRR = 1UL << (0U + 16U); /* PB0 LOW */
     } else if (chip == ADC420_CHIP_O2) {
-        GPIOB_BSRR = 1UL << 1U;         /* PB1 HIGH */
+        GPIOB_BSRR = 1UL << (1U + 16U); /* PB1 LOW */
     } else {
-        GPIOB_BSRR = 1UL << 10U;        /* PB10 HIGH */
+        GPIOB_BSRR = 1UL << (10U + 16U); /* PB10 LOW */
     }
     adc420_spin_us(100UL);
 }
