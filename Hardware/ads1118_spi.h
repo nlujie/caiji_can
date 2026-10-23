@@ -3,42 +3,25 @@
 
 #include "stm32f10x.h"
 
-// ±2.048V量程配置 (PGA=010)
-#define ADS1118_CONFIG_AIN0 0x44EB // AIN0单端输入, ±2.048V   0100 0100 1110 
-//#define ADS1118_CONFIG_AIN0 0xC5EB
+/* All three ADS1118 devices share SPI1. Chip-select inputs are active-low. */
+#define ADS1118_CHIP_N_O1  0U  /* PB0 */
+#define ADS1118_CHIP_N_O2  1U  /* PB1 */
+#define ADS1118_CHIP_N_O3  2U  /* PB10 */
 
-#define ADS1118_CONFIG_AIN1 0x54EB // AIN1单端输入, ±2.048V  
-#define ADS1118_CONFIG_AIN2 0x64EB // AIN2单端输入, ±2.048V
-#define ADS1118_CONFIG_AIN3 0x74EB // AIN3单端输入, ±2.048V
+extern volatile uint8_t  ads1118_spi_ready;
+extern volatile uint32_t ads1118_spi_timeout_count;
+extern volatile uint8_t  ads1118_last_chip;
+extern volatile uint8_t  ads1118_last_channel;
+extern volatile uint16_t ads1118_last_config;
+extern volatile uint16_t ads1118_last_raw;
 
-//#define ADS1118_CONFIG_AIN0 0xC58B // AIN0单端输入, ±2.048V   0100 0100 1110 
-//#define ADS1118_CONFIG_AIN1 0xD58B // AIN1单端输入, ±2.048V  
-//#define ADS1118_CONFIG_AIN2 0xE58B// AIN2单端输入, ±2.048V
-//#define ADS1118_CONFIG_AIN3 0xF58B // AIN3单端输入, ±2.048V
-
-
-// 函数声明
-void SPI1_Init(void);
-void SPI2_Init(void);
+/* Initializes SPI1 and drives all three active-low chip selects inactive. */
 void ADS1118_Init(void);
-void SPI1_SetSpeed(u8 SPI_BaudRatePrescaler);
-void SPI2_SetSpeed(u8 SPI_BaudRatePrescaler);
-u8 ADS1118_ReadWrite_SPI1(u8 ConfigReg1);
-u8 ADS1118_ReadWrite_SPI2(u8 ConfigReg1);
-u16 ADS1118_ReadVotage_SPI1_Chip1(u16 ConfigReg);
-u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg);
-u16 ADS1118_ReadVotage_SPI2(u16 ConfigReg);
 
-
-u16 ADS1118_ReadVotage_SPI1_Chip1_Optimized(u16 ConfigReg);
-u16 ADS1118_ReadVotage_SPI1_Chip2_Optimized(u16 ConfigReg);
-
-// CS控制宏
-#define ADC_CS1_Low()  GPIO_ResetBits(GPIOA, GPIO_Pin_4)   // SPI1第一个芯片
-#define ADC_CS1_High() GPIO_SetBits(GPIOA, GPIO_Pin_4)
-#define ADC_CS2_Low()  GPIO_ResetBits(GPIOA, GPIO_Pin_3)   // SPI1第二个芯片
-#define ADC_CS2_High() GPIO_SetBits(GPIOA, GPIO_Pin_3)
-#define ADC_CS3_Low()  GPIO_ResetBits(GPIOB, GPIO_Pin_12)  // SPI2芯片
-#define ADC_CS3_High() GPIO_SetBits(GPIOB, GPIO_Pin_12)
+/*
+ * Reads one single-ended ADS1118 input (AIN0..AIN3) from the selected chip.
+ * Returns 1 on success and writes the signed 16-bit conversion result to raw.
+ */
+uint8_t ADS1118_ReadChannel(uint8_t chip, uint8_t channel, int16_t *raw);
 
 #endif

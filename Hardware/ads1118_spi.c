@@ -1,461 +1,237 @@
 #include "ads1118_spi.h"
-#include "stm32f10x_spi.h"
-#include "stm32f10x_gpio.h"
 #include "stm32f10x_rcc.h"
-#include "serial.h"
-#include "delay.h"
+#include "stm32f10x_gpio.h"
+#include "stm32f10x_spi.h"
+#include "Delay.h"
 
-// 连续读取模式 - 更高效
-//u16 ADS1118_ReadVotage_SPI1_Chip1(u16 ConfigReg)
-//{  
-//    static u16 last_config = 0;
-//    u8  Hbyte = 0;
-//    u8  Lbyte = 0;
-//    u16 tmp = 0;
+#define ADS1118_CS_PORT       GPIOB
+#define ADS1118_CS_N_O1_PIN   GPIO_Pin_0
+#define ADS1118_CS_N_O2_PIN   GPIO_Pin_1
+#define ADS1118_CS_N_O3_PIN   GPIO_Pin_10
+#define ADS1118_ALL_CS_PINS   (ADS1118_CS_N_O1_PIN | ADS1118_CS_N_O2_PIN | ADS1118_CS_N_O3_PIN)
 
-//    ADC_CS1_Low();
-//    Delay_us(2);
-//    
-//    // 如果配置改变，需要重新启动转换
-//    if (last_config != ConfigReg) {
-//        // 发送新配置启动转换
-//        (void)ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-//        (void)ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-//        last_config = ConfigReg;
-//        
-//        // 等待第一次转换完成
-//        Delay_ms(10);
-//    }
-//    
-//    // 读取当前转换结果（同时启动下一次转换）
-//    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-//    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-//    tmp = ((u16)Hbyte << 8) | (u16)Lbyte;
-//    
-//    Delay_us(2);
-//    ADC_CS1_High();
-//    
-//    return tmp;
-//}
+#define ADS1118_SPI_TIMEOUT   100000UL
 
-// SPI1第一个芯片读取函数 (PA4片选)
-u16 ADS1118_ReadVotage_SPI1_Chip1(u16 ConfigReg)
-{  
-    u8  Hbyte=0;
-    u8  Lbyte=0;
-    u16 tmp=0;
+volatile uint8_t  ads1118_spi_ready = 0U;
+volatile uint32_t ads1118_spi_timeout_count = 0U;
+volatile uint8_t  ads1118_last_chip = 0xFFU;
+volatile uint8_t  ads1118_last_channel = 0xFFU;
+volatile uint16_t ads1118_last_config = 0U;
+volatile uint16_t ads1118_last_raw = 0U;
 
-    ADC_CS1_Low(); // 拉低PA4片选
-    Delay_us(8);
-    
-    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg>>8));
-    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-    
-    
-    
-    
-//    // 重要：等待转换完成
-//    // 对于128SPS，等待8ms；对于475SPS，等待2.1ms
-//    Delay_ms(10); // 增加足够的等待时间
-//    
-//    // 再次读取获取转换结果
-//    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg>>8));
-//    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-  
-    
-    
-    
-    
-    
-    
-    tmp = ((u16)Hbyte<<8)|(u16)Lbyte;
-    
-    Delay_us(8);
-    ADC_CS1_High(); // 拉高PA4片选
-    
-    return tmp;
+static void ADS1118_AllCSHigh(void)
+{
+    /* High = not selected. Never leave two ADCs selected on the shared bus. */
+    GPIO_SetBits(ADS1118_CS_PORT, ADS1118_ALL_CS_PINS);
 }
 
-// SPI1第二个芯片读取函数 (PA8片选)
-u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg)
-{  
-    u8  Hbyte=0;
-    u8  Lbyte=0;
-    u16 tmp=0;
+static uint8_t ADS1118_Select(uint8_t chip)
+{
+    ADS1118_AllCSHigh();
 
-    ADC_CS2_Low(); // 拉低PA8片选
-    Delay_us(8);
-    
-    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg>>8));
-    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-    tmp = ((u16)Hbyte<<8)|(u16)Lbyte;
-    
-    Delay_us(8);
-    ADC_CS2_High(); // 拉高PA8片选
-    
-    return tmp;
-}
+    switch (chip)
+    {
+        case ADS1118_CHIP_N_O1:
+            GPIO_ResetBits(ADS1118_CS_PORT, ADS1118_CS_N_O1_PIN);
+            return 1U;
 
+        case ADS1118_CHIP_N_O2:
+            GPIO_ResetBits(ADS1118_CS_PORT, ADS1118_CS_N_O2_PIN);
+            return 1U;
 
+        case ADS1118_CHIP_N_O3:
+            GPIO_ResetBits(ADS1118_CS_PORT, ADS1118_CS_N_O3_PIN);
+            return 1U;
 
-//// 连续转换模式下的优化读取函数
-//u16 ADS1118_ReadVotage_SPI1_Chip1(u16 ConfigReg)
-//{  
-//    static u16 last_config = 0;
-//    u8 Hbyte, Lbyte;
-//    u16 tmp;
-
-//    ADC_CS1_Low();
-//    Delay_us(10);
-//    
-//    // 检查是否需要切换通道
-//    if (last_config != ConfigReg) {
-//        // 通道切换，需要发送新配置
-//        (void)ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-//        (void)ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-//        last_config = ConfigReg;
-//        
-//        // 在连续模式下，切换通道后需要丢弃第一个读数
-//        ADC_CS1_High();
-//        Delay_ms(10);  // 等待新通道稳定
-//        ADC_CS1_Low();
-//        Delay_us(10);
-//        
-//        // 读取并丢弃第一个数据
-//        (void)ADS1118_ReadWrite_SPI1(0xFF);
-//        (void)ADS1118_ReadWrite_SPI1(0xFF);
-//    }
-//    
-//    // 读取当前转换结果
-//    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-//    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-//    tmp = ((u16)Hbyte << 8) | (u16)Lbyte;
-//    
-//    Delay_us(5);
-//    ADC_CS1_High();
-//    
-//    return tmp;
-//}
-
-//// SPI1第二个芯片读取函数 (PA8片选) - 同样优化
-//u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg)
-//{  
-//    static u16 last_config = 0;
-//    u8 Hbyte, Lbyte;
-//    u16 tmp;
-
-//    ADC_CS2_Low();
-//    Delay_us(10);
-//    
-//    // 检查是否需要切换通道
-//    if (last_config != ConfigReg) {
-//        // 通道切换，需要发送新配置
-//        (void)ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-//        (void)ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-//        last_config = ConfigReg;
-//        
-//        // 在连续模式下，切换通道后需要丢弃第一个读数
-//        ADC_CS2_High();
-//        Delay_ms(10);  // 等待新通道稳定
-//        ADC_CS2_Low();
-//        Delay_us(10);
-//        
-//        // 读取并丢弃第一个数据
-//        (void)ADS1118_ReadWrite_SPI1(0xFF);
-//        (void)ADS1118_ReadWrite_SPI1(0xFF);
-//    }
-//    
-//    // 读取当前转换结果
-//    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-//    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-//    tmp = ((u16)Hbyte << 8) | (u16)Lbyte;
-//    
-//    Delay_us(5);
-//    ADC_CS2_High();
-//    
-//    return tmp;
-//}
-
-
-
-//// 优化的单次读取函数 - 确保每次读取都是正确的数据
-u16 ADS1118_ReadVotage_SPI1_Chip1_Optimized(u16 ConfigReg)
-{  
-    static u16 last_config = 0;
-    u8 Hbyte, Lbyte;
-    u16 tmp;
-
-    ADC_CS1_Low();
-    Delay_us(15);  // 增加片选建立时间
-    
-    // 检查是否需要切换通道
-    if ((last_config & 0x7000) != (ConfigReg & 0x7000)) {
-        // 通道切换，需要重新配置
-        (void)ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-        (void)ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-        last_config = ConfigReg;
-        
-        // 通道切换后需要更长的稳定时间
-        ADC_CS1_High();
-        Delay_ms(15);  // 增加稳定时间
-        ADC_CS1_Low();
-        Delay_us(15);
-        
-        // 读取并丢弃第一个数据（确保是当前通道的数据）
-        (void)ADS1118_ReadWrite_SPI1(0xFF);
-        (void)ADS1118_ReadWrite_SPI1(0xFF);
-        
-        // 再等待一次转换周期
-        ADC_CS1_High();
-        Delay_ms(8);   // 128SPS转换时间
-        ADC_CS1_Low();
-        Delay_us(15);
+        default:
+            return 0U;
     }
-    
-    // 读取当前转换结果
-    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-    tmp = ((u16)Hbyte << 8) | (u16)Lbyte;
-    
-    Delay_us(10);
-    ADC_CS1_High();
-    
-    return tmp;
 }
 
-//// 同样的优化应用于第二个芯片
-//u16 ADS1118_ReadVotage_SPI1_Chip2_Optimized(u16 ConfigReg)
-//{  
-//    static u16 last_config = 0;
-//    u8 Hbyte, Lbyte;
-//    u16 tmp;
+static uint8_t ADS1118_TransferByte(uint8_t tx, uint8_t *rx)
+{
+    uint32_t timeout;
 
-//    ADC_CS2_Low();
-//    Delay_us(15);
-//    
-//    if ((last_config & 0x7000) != (ConfigReg & 0x7000)) {
-//        (void)ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-//        (void)ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-//        last_config = ConfigReg;
-//        
-//        ADC_CS2_High();
-//        Delay_ms(15);
-//        ADC_CS2_Low();
-//        Delay_us(15);
-//        
-//        (void)ADS1118_ReadWrite_SPI1(0xFF);
-//        (void)ADS1118_ReadWrite_SPI1(0xFF);
-//        
-//        ADC_CS2_High();
-//        Delay_ms(8);
-//        ADC_CS2_Low();
-//        Delay_us(15);
-//    }
-//    
-//    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-//    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-//    tmp = ((u16)Hbyte << 8) | (u16)Lbyte;
-//    
-//    Delay_us(10);
-//    ADC_CS2_High();
-//    
-//    return tmp;
-//}
+    timeout = ADS1118_SPI_TIMEOUT;
+    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET)
+    {
+        if (timeout-- == 0U)
+        {
+            return 0U;
+        }
+    }
 
+    SPI_I2S_SendData(SPI1, tx);
 
+    timeout = ADS1118_SPI_TIMEOUT;
+    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_RXNE) == RESET)
+    {
+        if (timeout-- == 0U)
+        {
+            return 0U;
+        }
+    }
 
-
-// 旧的SPI1读取函数（为了兼容性保留）
-u16 ADS1118_ReadVotage_SPI1(u16 ConfigReg)
-{  
-    return ADS1118_ReadVotage_SPI1_Chip1(ConfigReg); // 默认使用第一个芯片
+    *rx = (uint8_t)SPI_I2S_ReceiveData(SPI1);
+    return 1U;
 }
 
-void SPI1_Init(void)
-{	
-    GPIO_InitTypeDef GPIO_InitStructure;
-    SPI_InitTypeDef SPI_InitStructure;
-    
-    // 开启 GPIOA 和 SPI1 时钟
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1, ENABLE);
-    
-    // 配置 SPI1 引脚：PA5-SCK, PA6-MISO, PA7-MOSI
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5|GPIO_Pin_6|GPIO_Pin_7;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP; // 复用推挽
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
-    
-    GPIO_SetBits(GPIOA,GPIO_Pin_5|GPIO_Pin_6|GPIO_Pin_7);  // 拉高默认电平
-    
-    // SPI1 参数配置
-    SPI_InitStructure.SPI_Direction = SPI_Direction_2Lines_FullDuplex;// 全双工
-    SPI_InitStructure.SPI_Mode = SPI_Mode_Master;// 主机模式
-    SPI_InitStructure.SPI_DataSize = SPI_DataSize_8b;// 8位数据宽度
-    SPI_InitStructure.SPI_CPOL = SPI_CPOL_Low;// 空闲时钟低电平
-    SPI_InitStructure.SPI_CPHA = SPI_CPHA_2Edge;// 第二个边沿采样
-    SPI_InitStructure.SPI_NSS = SPI_NSS_Soft;// 软件管理片选
-    SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8;// 分频
-    SPI_InitStructure.SPI_FirstBit = SPI_FirstBit_MSB;// 高位先发
-    SPI_InitStructure.SPI_CRCPolynomial = 7;
-    SPI_Init(SPI1, &SPI_InitStructure);
- 
-    SPI_Cmd(SPI1, ENABLE);// 使能 SPI1
-    
-    // 启动一次传输，让 ADS1118 开始工作 - 使用新的2.048V量程配置
-    ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN2);//启动传输
-    Delay_ms(8); // 等待转换完成
-//    
-    // 添加第二个芯片的启动传输
-    ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN2);
-    Delay_ms(8); // 等待转换完成
-}
+/*
+ * ADS1118 supports a 16-clock data cycle: the conversion result is shifted
+ * out while the word on DIN is interpreted as a configuration/NOP word.
+ * The CS line is raised after each 16-bit transfer to reset the SPI frame.
+ */
+static uint8_t ADS1118_Transfer16(uint8_t chip, uint16_t tx_word, uint16_t *rx_word)
+{
+    uint8_t rx_hi;
+    uint8_t rx_lo;
+    uint32_t timeout;
 
-void SPI2_Init(void)
-{	
-    GPIO_InitTypeDef GPIO_InitStructure;
-    SPI_InitTypeDef SPI_InitStructure;
-    
-    // 开启 GPIOB 和 SPI2 时钟
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-    RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI2, ENABLE);
-    
-    // SPI2引脚: PB13-SCK, PB14-MISO, PB15-MOSI
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13|GPIO_Pin_14|GPIO_Pin_15;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;// 复用推挽
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOB, &GPIO_InitStructure);
-    
-    GPIO_SetBits(GPIOB, GPIO_Pin_13|GPIO_Pin_14|GPIO_Pin_15);
-    
-    // SPI2 参数配置（与 SPI1 相同）
-    SPI_InitStructure.SPI_Direction = SPI_Direction_2Lines_FullDuplex;
-    SPI_InitStructure.SPI_Mode = SPI_Mode_Master;
-    SPI_InitStructure.SPI_DataSize = SPI_DataSize_8b;
-    SPI_InitStructure.SPI_CPOL = SPI_CPOL_Low;
-    SPI_InitStructure.SPI_CPHA = SPI_CPHA_2Edge;
-    SPI_InitStructure.SPI_NSS = SPI_NSS_Soft;
-    SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;
-    SPI_InitStructure.SPI_FirstBit = SPI_FirstBit_MSB;
-    SPI_InitStructure.SPI_CRCPolynomial = 7;
-    SPI_Init(SPI2, &SPI_InitStructure);
- 
-    SPI_Cmd(SPI2, ENABLE);
-    
-    // 使用新的2.048V量程配置
-    ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN2);//启动传输
-    Delay_ms(8);
+    rx_hi = 0U;
+    rx_lo = 0U;
+
+    if (ADS1118_Select(chip) == 0U)
+    {
+        ads1118_spi_timeout_count++;
+        return 0U;
+    }
+
+    Delay_us(2U);
+
+    if (ADS1118_TransferByte((uint8_t)(tx_word >> 8), &rx_hi) == 0U)
+    {
+        goto transfer_error;
+    }
+
+    if (ADS1118_TransferByte((uint8_t)(tx_word & 0x00FFU), &rx_lo) == 0U)
+    {
+        goto transfer_error;
+    }
+
+    timeout = ADS1118_SPI_TIMEOUT;
+    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY) == SET)
+    {
+        if (timeout-- == 0U)
+        {
+            goto transfer_error;
+        }
+    }
+
+    Delay_us(1U);
+    ADS1118_AllCSHigh();
+
+    *rx_word = (uint16_t)(((uint16_t)rx_hi << 8) | (uint16_t)rx_lo);
+    return 1U;
+
+transfer_error:
+    /* Drain a pending byte, if any, before releasing the selected device. */
+    if (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_RXNE) != RESET)
+    {
+        (void)SPI_I2S_ReceiveData(SPI1);
+    }
+    ADS1118_AllCSHigh();
+    ads1118_spi_timeout_count++;
+    return 0U;
 }
 
 void ADS1118_Init(void)
-{	
-    GPIO_InitTypeDef GPIO_InitStructure;
-    
-    // 初始化SPI1的两个CS引脚 (PA4和PA8)
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-    
-    // SPI1的第一个CS (PA4)
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
-    ADC_CS1_High();
-    
-    // SPI1的第二个CS (PA8)
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
-    ADC_CS2_High();
-    
-    // 初始化SPI2的CS引脚 (PB12)
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
-    GPIO_Init(GPIOB, &GPIO_InitStructure);
-    ADC_CS3_High();
- 
-    // 初始化两个 SPI
-    SPI1_Init();
-    SPI2_Init();
-    
-    // 设置速率
-    SPI1_SetSpeed(SPI_BaudRatePrescaler_8);
-    SPI2_SetSpeed(SPI_BaudRatePrescaler_8);
-}
-
-void SPI1_SetSpeed(u8 SPI_BaudRatePrescaler)
 {
-    assert_param(IS_SPI_BAUDRATE_PRESCALER(SPI_BaudRatePrescaler));
-    SPI1->CR1 &= 0XFFC7;  // 清除分频位
-    SPI1->CR1 |= SPI_BaudRatePrescaler;
-    SPI_Cmd(SPI1,ENABLE); 
+    GPIO_InitTypeDef gpio;
+    SPI_InitTypeDef spi;
+
+    ads1118_spi_ready = 0U;
+    ads1118_spi_timeout_count = 0U;
+    ads1118_last_chip = 0xFFU;
+    ads1118_last_channel = 0xFFU;
+    ads1118_last_config = 0U;
+    ads1118_last_raw = 0U;
+
+    RCC_APB2PeriphClockCmd(
+        RCC_APB2Periph_AFIO |
+        RCC_APB2Periph_GPIOA |
+        RCC_APB2Periph_GPIOB |
+        RCC_APB2Periph_SPI1,
+        ENABLE);
+
+    /* CS: PB0=N_O1, PB1=N_O2, PB10=N_O3; all are active-low. */
+    gpio.GPIO_Pin = ADS1118_ALL_CS_PINS;
+    gpio.GPIO_Mode = GPIO_Mode_Out_PP;
+    gpio.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(ADS1118_CS_PORT, &gpio);
+    ADS1118_AllCSHigh();
+
+    /* SPI1 SCK=PA5 and MOSI=PA7 are alternate-function push-pull outputs. */
+    gpio.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_7;
+    gpio.GPIO_Mode = GPIO_Mode_AF_PP;
+    gpio.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOA, &gpio);
+
+    /* SPI1 MISO=PA6 is the ADS1118 DOUT/DRDY signal. */
+    gpio.GPIO_Pin = GPIO_Pin_6;
+    gpio.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+    gpio.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOA, &gpio);
+
+    SPI_I2S_DeInit(SPI1);
+    spi.SPI_Direction = SPI_Direction_2Lines_FullDuplex;
+    spi.SPI_Mode = SPI_Mode_Master;
+    spi.SPI_DataSize = SPI_DataSize_8b;
+    spi.SPI_CPOL = SPI_CPOL_Low;
+    spi.SPI_CPHA = SPI_CPHA_2Edge;
+    spi.SPI_NSS = SPI_NSS_Soft;
+    spi.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;
+    spi.SPI_FirstBit = SPI_FirstBit_MSB;
+    spi.SPI_CRCPolynomial = 7U;
+    SPI_Init(SPI1, &spi);
+    SPI_Cmd(SPI1, ENABLE);
+
+    ads1118_spi_ready = 1U;
 }
 
-void SPI2_SetSpeed(u8 SPI_BaudRatePrescaler)
+uint8_t ADS1118_ReadChannel(uint8_t chip, uint8_t channel, int16_t *raw)
 {
-    assert_param(IS_SPI_BAUDRATE_PRESCALER(SPI_BaudRatePrescaler));
-    SPI2->CR1 &= 0XFFC7;
-    SPI2->CR1 |= SPI_BaudRatePrescaler;
-    SPI_Cmd(SPI2,ENABLE); 
-}
+    uint16_t config;
+    uint16_t ignored_result;
+    uint16_t conversion_result;
 
-u8 ADS1118_ReadWrite_SPI1(u8 ConfigReg1)
-{
-    u8 retry=0;
-    // 等待发送缓冲区空
-    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET)
+    if ((ads1118_spi_ready == 0U) ||
+        (raw == 0) ||
+        (chip > ADS1118_CHIP_N_O3) ||
+        (channel > 3U))
     {
-        retry++;
-        if(retry>200)return 0;
-    }																														
-    
-    SPI_I2S_SendData(SPI1, ConfigReg1);  // 发送1字节
-    
-    // 等待接收完成
-    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_RXNE) == RESET)
+        return 0U;
+    }
+
+    ads1118_last_chip = chip;
+    ads1118_last_channel = channel;
+
+    /*
+     * Config: OS=1 (start single-shot), MUX=AINx-to-GND, PGA=+/-2.048 V,
+     * single-shot mode, 860 SPS, internal temperature mode disabled.
+     * 0xC5EB, 0xD5EB, 0xE5EB, 0xF5EB select AIN0..AIN3 respectively.
+     */
+    config = (uint16_t)(0xC5EBU + ((uint16_t)channel << 12));
+
+    /* First 16-bit transfer writes the new channel configuration. */
+    if (ADS1118_Transfer16(chip, config, &ignored_result) == 0U)
     {
-        retry++;
-        if(retry>200)return 0;
-    }	
-    
-    return SPI_I2S_ReceiveData(SPI1);// 读取接收到的数据
-}
+        return 0U;
+    }
+    ads1118_last_config = config;
 
-u8 ADS1118_ReadWrite_SPI2(u8 ConfigReg1)
-{
-    u8 retry=0;
-    while (SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_TXE) == RESET)
+    /* 860 SPS conversion time is about 1.16 ms; 2 ms leaves margin. */
+    Delay_ms(2U);
+
+    /*
+     * NOP bits [2:1] = 00 in 0x0000, so this transfer reads the buffered
+     * conversion result without overwriting the configuration register.
+     */
+    if (ADS1118_Transfer16(chip, 0x0000U, &conversion_result) == 0U)
     {
-        retry++;
-        if(retry>200)return 0;
-    }																														
-    
-    SPI_I2S_SendData(SPI2, ConfigReg1);
-    
-    while (SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_RXNE) == RESET)
-    {
-        retry++;
-        if(retry>200)return 0;
-    }	
-    
-    return SPI_I2S_ReceiveData(SPI2);
+        return 0U;
+    }
+
+    ads1118_last_raw = conversion_result;
+    *raw = (int16_t)conversion_result;
+    return 1U;
 }
-
-// SPI2芯片读取函数
-u16 ADS1118_ReadVotage_SPI2(u16 ConfigReg)
-{  
-    u8  Hbyte=0;
-    u8  Lbyte=0;
-    u16 tmp=0;
-
-    ADC_CS3_Low();
-    Delay_us(2);
-    
-    Hbyte = ADS1118_ReadWrite_SPI2((u8)(ConfigReg>>8));
-    Lbyte = ADS1118_ReadWrite_SPI2((u8)ConfigReg);
-    tmp = ((u16)Hbyte<<8)|(u16)Lbyte;
-    
-    Delay_us(2);
-    ADC_CS3_High();
-
-    return tmp;
-}
-

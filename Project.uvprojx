@@ -672,143 +672,38 @@
             </File>
           </Files>
         </Group>
-        <Group>
+                <Group>
           <GroupName>Hardware</GroupName>
           <Files>
             <File>
-              <FileName>LED.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\LED.c</FilePath>
-            </File>
-            <File>
-              <FileName>LED.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\LED.h</FilePath>
-            </File>
-            <File>
-              <FileName>Key.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\Key.c</FilePath>
-            </File>
-            <File>
-              <FileName>Key.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\Key.h</FilePath>
-            </File>
-            <File>
-              <FileName>OLED.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\OLED.c</FilePath>
-            </File>
-            <File>
-              <FileName>OLED.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\OLED.h</FilePath>
-            </File>
-            <File>
-              <FileName>OLED_Font.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\OLED_Font.h</FilePath>
-            </File>
-            <File>
-              <FileName>Serial.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\Serial.c</FilePath>
-            </File>
-            <File>
-              <FileName>Serial.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\Serial.h</FilePath>
-            </File>
-            <File>
-              <FileName>func.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\func.c</FilePath>
-            </File>
-            <File>
-              <FileName>func.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\func.h</FilePath>
-            </File>
-            <File>
-              <FileName>filter.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\filter.c</FilePath>
-            </File>
-            <File>
-              <FileName>filter.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\filter.h</FilePath>
-            </File>
-            <File>
               <FileName>can.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Hardware\can.c</FilePath>
+              <FilePath>.\\Hardware\\can.c</FilePath>
             </File>
             <File>
               <FileName>can.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\Hardware\can.h</FilePath>
+              <FilePath>.\\Hardware\\can.h</FilePath>
             </File>
             <File>
               <FileName>ads1118_spi.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Hardware\ads1118_spi.c</FilePath>
+              <FilePath>.\\Hardware\\ads1118_spi.c</FilePath>
             </File>
             <File>
               <FileName>ads1118_spi.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\Hardware\ads1118_spi.h</FilePath>
+              <FilePath>.\\Hardware\\ads1118_spi.h</FilePath>
             </File>
             <File>
-              <FileName>serial1.c</FileName>
+              <FileName>adc420_app.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Hardware\serial1.c</FilePath>
+              <FilePath>.\\Hardware\\adc420_app.c</FilePath>
             </File>
             <File>
-              <FileName>serial1.h</FileName>
+              <FileName>adc420_app.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\Hardware\serial1.h</FilePath>
-            </File>
-            <File>
-              <FileName>serial2.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\serial2.c</FilePath>
-            </File>
-            <File>
-              <FileName>serial2.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\serial2.h</FilePath>
-            </File>
-            <File>
-              <FileName>MGPIOO.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>D:\项目\Hardware\MGPIOO.c</FilePath>
-            </File>
-            <File>
-              <FileName>MGPIOO.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>D:\项目\Hardware\MGPIOO.h</FilePath>
-            </File>
-            <File>
-              <FileName>modubus_rtu_slave.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\modubus_rtu_slave.c</FilePath>
-            </File>
-            <File>
-              <FileName>modbus_rtu_slave.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\modbus_rtu_slave.h</FilePath>
-            </File>
-            <File>
-              <FileName>modbus_rtu_master.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\modbus_rtu_master.c</FilePath>
-            </File>
-            <File>
-              <FileName>modbus_rtu_master.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\modbus_rtu_master.h</FilePath>
+              <FilePath>.\\Hardware\\adc420_app.h</FilePath>
             </File>
           </Files>
         </Group>
