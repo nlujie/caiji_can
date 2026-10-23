@@ -3,21 +3,21 @@
 
 #include "stm32f10x.h"
 
-// °¿2.048V¡ø≥Ã≈‰÷√ (PGA=010)
-#define ADS1118_CONFIG_AIN0 0x44EB // AIN0µ•∂À ‰»Î, °¿2.048V   0100 0100 1110 
+// √∑2.048VÏ¢ÜÎÑãÌÜ†Èõ∂ (PGA=010)
+#define ADS1118_CONFIG_AIN0 0x44EB // AIN0Îç∞Îò•Ê∏¥Ìùô, √∑2.048V   0100 0100 1110 
 //#define ADS1118_CONFIG_AIN0 0xC5EB
 
-#define ADS1118_CONFIG_AIN1 0x54EB // AIN1µ•∂À ‰»Î, °¿2.048V  
-#define ADS1118_CONFIG_AIN2 0x64EB // AIN2µ•∂À ‰»Î, °¿2.048V
-#define ADS1118_CONFIG_AIN3 0x74EB // AIN3µ•∂À ‰»Î, °¿2.048V
+#define ADS1118_CONFIG_AIN1 0x54EB // AIN1Îç∞Îò•Ê∏¥Ìùô, √∑2.048V  
+#define ADS1118_CONFIG_AIN2 0x64EB // AIN2Îç∞Îò•Ê∏¥Ìùô, √∑2.048V
+#define ADS1118_CONFIG_AIN3 0x74EB // AIN3Îç∞Îò•Ê∏¥Ìùô, √∑2.048V
 
-//#define ADS1118_CONFIG_AIN0 0xC58B // AIN0µ•∂À ‰»Î, °¿2.048V   0100 0100 1110 
-//#define ADS1118_CONFIG_AIN1 0xD58B // AIN1µ•∂À ‰»Î, °¿2.048V  
-//#define ADS1118_CONFIG_AIN2 0xE58B// AIN2µ•∂À ‰»Î, °¿2.048V
-//#define ADS1118_CONFIG_AIN3 0xF58B // AIN3µ•∂À ‰»Î, °¿2.048V
+//#define ADS1118_CONFIG_AIN0 0xC58B // AIN0Îç∞Îò•Ê∏¥Ìùô, √∑2.048V   0100 0100 1110 
+//#define ADS1118_CONFIG_AIN1 0xD58B // AIN1Îç∞Îò•Ê∏¥Ìùô, √∑2.048V  
+//#define ADS1118_CONFIG_AIN2 0xE58B// AIN2Îç∞Îò•Ê∏¥Ìùô, √∑2.048V
+//#define ADS1118_CONFIG_AIN3 0xF58B // AIN3Îç∞Îò•Ê∏¥Ìùô, √∑2.048V
 
 
-// ∫Ø ˝…˘√˜
+// Î≥ÄÈëíÓÅòÏ∏†
 void SPI1_Init(void);
 void SPI2_Init(void);
 void ADS1118_Init(void);
@@ -28,17 +28,19 @@ u8 ADS1118_ReadWrite_SPI2(u8 ConfigReg1);
 u16 ADS1118_ReadVotage_SPI1_Chip1(u16 ConfigReg);
 u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg);
 u16 ADS1118_ReadVotage_SPI2(u16 ConfigReg);
+/* chip: 1=N_O1/PB0, 2=N_O2/PB1, 3=N_O3/PB10; channel: AIN0..AIN3 */
+u16 ADS1118_ReadChannel_SPI1(u8 chip, u8 channel);
 
 
 u16 ADS1118_ReadVotage_SPI1_Chip1_Optimized(u16 ConfigReg);
 u16 ADS1118_ReadVotage_SPI1_Chip2_Optimized(u16 ConfigReg);
 
-// CSøÿ÷∆∫Í
-#define ADC_CS1_Low()  GPIO_ResetBits(GPIOA, GPIO_Pin_4)   // SPI1µ⁄“ª∏ˆ–æ∆¨
-#define ADC_CS1_High() GPIO_SetBits(GPIOA, GPIO_Pin_4)
-#define ADC_CS2_Low()  GPIO_ResetBits(GPIOA, GPIO_Pin_3)   // SPI1µ⁄∂˛∏ˆ–æ∆¨
-#define ADC_CS2_High() GPIO_SetBits(GPIOA, GPIO_Pin_3)
-#define ADC_CS3_Low()  GPIO_ResetBits(GPIOB, GPIO_Pin_12)  // SPI2–æ∆¨
-#define ADC_CS3_High() GPIO_SetBits(GPIOB, GPIO_Pin_12)
+// CSÏô†ÈΩ°Î∏å
+#define ADC_CS1_Low()  GPIO_ResetBits(GPIOB, GPIO_Pin_0)   // N_O1ÔºåSPI1ÁâáÈÄâ
+#define ADC_CS1_High() GPIO_SetBits(GPIOB, GPIO_Pin_0)
+#define ADC_CS2_Low()  GPIO_ResetBits(GPIOB, GPIO_Pin_1)   // N_O2ÔºåSPI1ÁâáÈÄâ
+#define ADC_CS2_High() GPIO_SetBits(GPIOB, GPIO_Pin_1)
+#define ADC_CS3_Low()  GPIO_ResetBits(GPIOB, GPIO_Pin_10)  // N_O3ÔºåSPI1ÁâáÈÄâ
+#define ADC_CS3_High() GPIO_SetBits(GPIOB, GPIO_Pin_10)
 
 #endif

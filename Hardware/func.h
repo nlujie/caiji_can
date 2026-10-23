@@ -2,14 +2,16 @@
 #define __FUNC_H
 
 #include "stm32f10x.h"
-#include "filter.h"  // °üº¬ÂË²¨Í·ÎÄ¼ş
+#include "filter.h"  // åŒ…å«æ»¤æ³¢å¤´æ–‡ä»¶
 
-// ¶¨ÒåÂË²¨½á¹¹Ìå
+#define ADC420_CHANNEL_COUNT 10
+
+// å®šä¹‰æ»¤æ³¢ç»“æ„ä½“
 typedef struct {
     uint32_t time_1ms;
 } Task_Timer;
 
-// CANÏûÏ¢½á¹¹
+// CANæ¶ˆæ¯ç»“æ„
 typedef struct {
     uint32_t id;
     uint8_t IDE;
@@ -18,68 +20,71 @@ typedef struct {
     uint8_t data[8];
 } CAN_Message;
 
-// ADCÔ­Ê¼Êı¾İ½á¹¹Ìå - Ã¿¸öĞ¾Æ¬4¸öÍ¨µÀ
+// ADCåŸå§‹æ•°æ®ç»“æ„ä½“ - æ¯ä¸ªèŠ¯ç‰‡4ä¸ªé€šé“
 typedef struct {
-    uint16_t ain0;  // Í¨µÀ0Ô­Ê¼ADCÖµ
-    uint16_t ain1;  // Í¨µÀ1Ô­Ê¼ADCÖµ
-    uint16_t ain2;  // Í¨µÀ2Ô­Ê¼ADCÖµ
-    uint16_t ain3;  // Í¨µÀ3Ô­Ê¼ADCÖµ
+    uint16_t ain0;  // é€šé“0åŸå§‹ADCå€¼
+    uint16_t ain1;  // é€šé“1åŸå§‹ADCå€¼
+    uint16_t ain2;  // é€šé“2åŸå§‹ADCå€¼
+    uint16_t ain3;  // é€šé“3åŸå§‹ADCå€¼
 } ADC_Raw_Data_t;
 
-// CANÊı¾İÁªºÏÌå - ÓÃÓÚÔÚ½á¹¹ÌåºÍ×Ö½ÚÊı×éÖ®¼ä×ª»»
+// CANæ•°æ®è”åˆä½“ - ç”¨äºåœ¨ç»“æ„ä½“å’Œå­—èŠ‚æ•°ç»„ä¹‹é—´è½¬æ¢
 typedef union {
-    ADC_Raw_Data_t channels;  // ÒÔ½á¹¹ÌåĞÎÊ½·ÃÎÊ
-    uint8_t bytes[8];         // ÒÔ×Ö½ÚÊı×éĞÎÊ½·ÃÎÊ
-    uint16_t words[4];        // ÒÔ16Î»Êı×éĞÎÊ½·ÃÎÊ
+    ADC_Raw_Data_t channels;  // ä»¥ç»“æ„ä½“å½¢å¼è®¿é—®
+    uint8_t bytes[8];         // ä»¥å­—èŠ‚æ•°ç»„å½¢å¼è®¿é—®
+    uint16_t words[4];        // ä»¥16ä½æ•°ç»„å½¢å¼è®¿é—®
 } CAN_Data_Union_t;
 
-// ´«¸ĞÆ÷ÀàĞÍÃ¶¾Ù
+// ä¼ æ„Ÿå™¨ç±»å‹æšä¸¾
 typedef enum {
-    SENSOR_4_20MA = 0,    // 4-20mAµçÁ÷´«¸ĞÆ÷
-    SENSOR_THERMISTOR,    // ÈÈµç×èÎÂ¶È´«¸ĞÆ÷
-    SENSOR_VOLTAGE_0_10V  // 0-10VµçÑ¹´«¸ĞÆ÷
+    SENSOR_4_20MA = 0,    // 4-20mAç”µæµä¼ æ„Ÿå™¨
+    SENSOR_THERMISTOR,    // çƒ­ç”µé˜»æ¸©åº¦ä¼ æ„Ÿå™¨
+    SENSOR_VOLTAGE_0_10V  // 0-10Vç”µå‹ä¼ æ„Ÿå™¨
 } Sensor_Type_t;
 
-// Í¨µÀÅäÖÃ½á¹¹Ìå
+// é€šé“é…ç½®ç»“æ„ä½“
 typedef struct {
-    Sensor_Type_t type;   // ´«¸ĞÆ÷ÀàĞÍ
-    const char* name;     // Í¨µÀÃû³Æ
+    Sensor_Type_t type;   // ä¼ æ„Ÿå™¨ç±»å‹
+    const char* name;     // é€šé“åç§°
 } Channel_Config_t;
 
-// Ğ¾Æ¬ÅäÖÃ½á¹¹Ìå
+// èŠ¯ç‰‡é…ç½®ç»“æ„ä½“
 typedef struct {
-    const char* chip_name;           // Ğ¾Æ¬Ãû³Æ
-    Channel_Config_t channels[4];    // 4¸öÍ¨µÀµÄÅäÖÃ
+    const char* chip_name;           // èŠ¯ç‰‡åç§°
+    Channel_Config_t channels[4];    // 4ä¸ªé€šé“çš„é…ç½®
 } Chip_Config_t;
 
-// ÉùÃ÷È«¾Ö±äÁ¿
+// å£°æ˜å…¨å±€å˜é‡
 extern Task_Timer task_tim1;
 extern CAN_Message can_rx_msg;
+extern uint16_t adc420_raw_samples[ADC420_CHANNEL_COUNT];
+extern uint16_t adc420_current_centi_ma[ADC420_CHANNEL_COUNT];
+void ADC420_ScanAndSend(void);
 
-// SPI1µÚÒ»¸öĞ¾Æ¬ (PA4Æ¬Ñ¡) - È«¾Ö±äÁ¿
+// SPI1ç¬¬ä¸€ä¸ªèŠ¯ç‰‡ (PA4ç‰‡é€‰) - å…¨å±€å˜é‡
 extern float spi1_chip1_ain0_current;
 extern float spi1_chip1_ain1_current;  
 extern float spi1_chip1_ain2_temp;
 extern float spi1_chip1_ain3_temp;
 
-// SPI1µÚ¶ş¸öĞ¾Æ¬ (PA8Æ¬Ñ¡) - È«¾Ö±äÁ¿
+// SPI1ç¬¬äºŒä¸ªèŠ¯ç‰‡ (PA8ç‰‡é€‰) - å…¨å±€å˜é‡
 extern float spi1_chip2_ain0_current;
 extern float spi1_chip2_ain1_current;
 extern float spi1_chip2_ain2_current;
 extern float spi1_chip2_ain3_temp;
 
-// SPI2Ğ¾Æ¬ - È«¾Ö±äÁ¿
+// SPI2èŠ¯ç‰‡ - å…¨å±€å˜é‡
 extern float spi2_ain0_voltage;
 extern float spi2_ain1_current;
 extern float spi2_ain2_current;
 extern float spi2_ain3_temp;
 
-// Ô­Ê¼ADCÊı¾İ´æ´¢£¨Ê¹ÓÃ½á¹¹Ìå£©
+// åŸå§‹ADCæ•°æ®å­˜å‚¨ï¼ˆä½¿ç”¨ç»“æ„ä½“ï¼‰
 extern ADC_Raw_Data_t raw_adc_spi1_chip1;
 extern ADC_Raw_Data_t raw_adc_spi1_chip2;
 extern ADC_Raw_Data_t raw_adc_spi2;
 
-// ¸´ºÏÂË²¨½á¹¹Ìå
+// å¤åˆæ»¤æ³¢ç»“æ„ä½“
 extern CompositeFilter comp_filter_spi1_chip1_ain0;
 extern CompositeFilter comp_filter_spi1_chip1_ain1;
 extern CompositeFilter comp_filter_spi1_chip1_ain2;
@@ -93,7 +98,7 @@ extern CompositeFilter comp_filter_spi2_ain1;
 extern CompositeFilter comp_filter_spi2_ain2;
 extern CompositeFilter comp_filter_spi2_ain3;
 
-// ÂË²¨ºóµÄADCÖµ
+// æ»¤æ³¢åçš„ADCå€¼
 extern uint16_t filtered_adc_spi1_chip1_ain0;
 extern uint16_t filtered_adc_spi1_chip1_ain1;
 extern uint16_t filtered_adc_spi1_chip1_ain2;
@@ -107,31 +112,37 @@ extern uint16_t filtered_adc_spi2_ain1;
 extern uint16_t filtered_adc_spi2_ain2;
 extern uint16_t filtered_adc_spi2_ain3;
 
-// CAN ID¶¨Òå
-#define CAN_ID_SPI1_CHIP1_RAW  0x110  // SPI1µÚÒ»¸öĞ¾Æ¬Ô­Ê¼Êı¾İ
-#define CAN_ID_SPI1_CHIP2_RAW  0x111  // SPI1µÚ¶ş¸öĞ¾Æ¬Ô­Ê¼Êı¾İ
-#define CAN_ID_SPI2_RAW        0x112  // SPI2Ğ¾Æ¬Ô­Ê¼Êı¾İ
+// CAN IDå®šä¹‰
+#define CAN_ID_SPI1_CHIP1_RAW  0x110  // æ—§ç‰ˆADCåŸå§‹æ•°æ®IDï¼Œä¿ç•™å…¼å®¹
+#define CAN_ID_SPI1_CHIP2_RAW  0x111  // æ—§ç‰ˆADCåŸå§‹æ•°æ®IDï¼Œä¿ç•™å…¼å®¹
+#define CAN_ID_SPI2_RAW        0x112  // æ—§ç‰ˆADCåŸå§‹æ•°æ®IDï¼Œä¿ç•™å…¼å®¹
+
+/* å¤–éƒ¨4-20mAä¼ æ„Ÿå™¨CANæŠ¥æ–‡ï¼šæ ‡å‡†å¸§ã€8å­—èŠ‚ã€æ¯é€šé“uint16å°ç«¯åºã€å•ä½0.01mAã€‚ */
+#define CAN_ID_ADC420_GROUP1   0x120  /* ADC_2ã€ADC_3ã€ADC_4ã€ADC_5 */
+#define CAN_ID_ADC420_GROUP2   0x121  /* ADC_6ã€ADC_7ã€ADC_8ã€ADC_9 */
+#define CAN_ID_ADC420_GROUP3   0x122  /* ADC_10ã€ADC_11ã€ä¿ç•™ã€ä¿ç•™ */
+#define ADC420_CAN_INVALID_VALUE 0xFFFF
 
 
 
-//#define CAN_ID_HTM440_RAW       0x303  // ÎÂÊª¶ÈÔ­Ê¼ÕûÊıÊı¾İ
+//#define CAN_ID_HTM440_RAW       0x303  // æ¸©æ¹¿åº¦åŸå§‹æ•´æ•°æ•°æ®
 
 
-// ÎÂÊª¶ÈÔ­Ê¼Êı¾İÁªºÏÌå
+// æ¸©æ¹¿åº¦åŸå§‹æ•°æ®è”åˆä½“
 typedef union {
     struct {
-        int16_t raw_temp;      // Ô­Ê¼ÎÂ¶ÈÖµ£¨Êµ¼ÊÖµ¡Á10£©
-        int16_t raw_humidity;  // Ô­Ê¼Êª¶ÈÖµ£¨Êµ¼ÊÖµ¡Á10£©
-        uint8_t device_addr;   // Éè±¸µØÖ·
-        uint8_t status;        // ×´Ì¬±êÖ¾
-        uint8_t reserved[2];   // ±£Áô×Ö½Ú
+        int16_t raw_temp;      // åŸå§‹æ¸©åº¦å€¼ï¼ˆå®é™…å€¼Ã—10ï¼‰
+        int16_t raw_humidity;  // åŸå§‹æ¹¿åº¦å€¼ï¼ˆå®é™…å€¼Ã—10ï¼‰
+        uint8_t device_addr;   // è®¾å¤‡åœ°å€
+        uint8_t status;        // çŠ¶æ€æ ‡å¿—
+        uint8_t reserved[2];   // ä¿ç•™å­—èŠ‚
     } data;
     uint8_t bytes[8];
 } HTM440_Raw_Data_Union_t;
 
 
 
-// º¯ÊıÉùÃ÷
+// å‡½æ•°å£°æ˜
 void IWDG_Init(uint32_t timeout_ms);
 void Check_IWDG_Reset(void);
 void CAN_Rx_Callback(CanRxMsg* rx_msg);
@@ -149,24 +160,24 @@ void task_50ms(void);
 void task_100ms(void);
 void task_200ms(void);
 
-// ´«¸ĞÆ÷Ïà¹Øº¯Êı
+// ä¼ æ„Ÿå™¨ç›¸å…³å‡½æ•°
 void Read_ADS1118_Direct(void);
 float ConvertVoltageToCurrent_2V(float voltage_v);
 float ConvertVoltageToOriginal_10V(float voltage_v);
 float CalculateNTCResistance(float voltage_v);
 float CalculateNTCTemperature(float resistance);
 
-// CAN·¢ËÍº¯Êı
+// CANå‘é€å‡½æ•°
 void CAN_Send_ADC_Raw_Data(uint32_t can_id, CAN_Data_Union_t* can_data);
 void CAN_Send_All_ADC_Raw_Data(void);
 const char* Get_Sensor_Type_Name(Sensor_Type_t type);
 
-////// ÎÂÊª¶ÈCAN·¢ËÍº¯Êı
+////// æ¸©æ¹¿åº¦CANå‘é€å‡½æ•°
 ////void CAN_Send_HTM440_Raw_Data(void);
 
 void Serial_SendFloat(float value, int decimal_places);
 
-// ³õÊ¼»¯º¯Êı
+// åˆå§‹åŒ–å‡½æ•°
 void Initialize_Composite_Filter_Structs(void);
 
 void HTM440_Init(void);

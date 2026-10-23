@@ -16,6 +16,10 @@
 Task_Timer task_tim1 = {0};
 CAN_Message can_rx_msg = {0, 0, 0, 0, {0}};
 
+/* 外部4-20mA通道：数组下标0..9依次对应ADC_2..ADC_11。 */
+uint16_t adc420_raw_samples[ADC420_CHANNEL_COUNT] = {0};
+uint16_t adc420_current_centi_ma[ADC420_CHANNEL_COUNT] = {0};
+
 
 // 在func.c的全局变量区域添加
 // 温湿度读取相关变量
@@ -450,6 +454,112 @@ void CAN_Send_All_ADC_Raw_Data(void) {
     can_data.channels = raw_adc_spi2;
     CAN_Send_ADC_Raw_Data(CAN_ID_SPI2_RAW, &can_data);
 }
+/* 按《采集板使用说明》映射10路外部4-20mA输入。
+ * chip=1/2/3分别对应N_O1/PB0、N_O2/PB1、N_O3/PB10。
+ * ADS1118的PGA为±2.048V，1 LSB=62.5uV；PCB按100Ω分流，
+ * 因此电流(mA)=ADC原始码×0.000625，CAN发送值为0.01mA单位。
+ */
+typedef struct
+{
+    uint8_t chip;
+    uint8_t channel;
+} ADC420_ChannelMap_t;
+
+static const ADC420_ChannelMap_t adc420_channel_map[ADC420_CHANNEL_COUNT] =
+{
+    {2, 2}, /* ADC_2: N_O2/AIN2，P10-1 */
+    {2, 3}, /* ADC_3: N_O2/AIN3，P11-1 */
+    {1, 0}, /* ADC_4: N_O1/AIN0，P1-3 */
+    {1, 1}, /* ADC_5: N_O1/AIN1，P2-1 */
+    {1, 3}, /* ADC_6: N_O1/AIN3，P4-7 */
+    {1, 2}, /* ADC_7: N_O1/AIN2，P5-5 */
+    {3, 2}, /* ADC_8: N_O3/AIN2，P9-11 */
+    {3, 1}, /* ADC_9: N_O3/AIN1，P7-9 */
+    {3, 3}, /* ADC_10: N_O3/AIN3，P8-7 */
+    {3, 0}  /* ADC_11: N_O3/AIN0，P6-11 */
+};
+
+static uint16_t ADC420_RawToCentiMa(uint16_t raw_value)
+{
+    int16_t signed_raw = (int16_t)raw_value;
+
+    /* 标称4-20mA对应0.4-2.0V，即ADC原始码约6400-32000。
+       超出范围时用0xFFFF标记，避免把断线/超量程伪装成正常电流。 */
+    if(signed_raw < 6400 || signed_raw > 32000)
+    {
+        return ADC420_CAN_INVALID_VALUE;
+    }
+
+    /* 0.01mA单位：raw×0.000625mA×100 = raw/16。 */
+    return (uint16_t)(((uint32_t)signed_raw + 8U) / 16U);
+}
+
+static void ADC420_SendFrame(uint16_t can_id,
+                             uint16_t value0,
+                             uint16_t value1,
+                             uint16_t value2,
+                             uint16_t value3)
+{
+    CanTxMsg tx_msg;
+    uint16_t values[4];
+    uint8_t i;
+
+    values[0] = value0;
+    values[1] = value1;
+    values[2] = value2;
+    values[3] = value3;
+
+    tx_msg.StdId = can_id;
+    tx_msg.ExtId = can_id;
+    tx_msg.IDE = CAN_Id_Standard;
+    tx_msg.RTR = CAN_RTR_Data;
+    tx_msg.DLC = 8;
+
+    /* 每个通道占2字节，小端序，单位0.01mA。 */
+    for(i = 0; i < 4; i++)
+    {
+        tx_msg.Data[i * 2] = (uint8_t)(values[i] & 0xFFU);
+        tx_msg.Data[i * 2 + 1] = (uint8_t)(values[i] >> 8);
+    }
+
+    (void)CAN_SendMessage(&tx_msg);
+}
+
+void ADC420_ScanAndSend(void)
+{
+    uint8_t i;
+
+    for(i = 0; i < ADC420_CHANNEL_COUNT; i++)
+    {
+        adc420_raw_samples[i] =
+            ADS1118_ReadChannel_SPI1(adc420_channel_map[i].chip,
+                                     adc420_channel_map[i].channel);
+        adc420_current_centi_ma[i] =
+            ADC420_RawToCentiMa(adc420_raw_samples[i]);
+    }
+
+    /* 0x120: ADC_2、ADC_3、ADC_4、ADC_5 */
+    ADC420_SendFrame(CAN_ID_ADC420_GROUP1,
+                     adc420_current_centi_ma[0],
+                     adc420_current_centi_ma[1],
+                     adc420_current_centi_ma[2],
+                     adc420_current_centi_ma[3]);
+
+    /* 0x121: ADC_6、ADC_7、ADC_8、ADC_9 */
+    ADC420_SendFrame(CAN_ID_ADC420_GROUP2,
+                     adc420_current_centi_ma[4],
+                     adc420_current_centi_ma[5],
+                     adc420_current_centi_ma[6],
+                     adc420_current_centi_ma[7]);
+
+    /* 0x122: ADC_10、ADC_11；后两个字为保留位，填0xFFFF。 */
+    ADC420_SendFrame(CAN_ID_ADC420_GROUP3,
+                     adc420_current_centi_ma[8],
+                     adc420_current_centi_ma[9],
+                     ADC420_CAN_INVALID_VALUE,
+                     ADC420_CAN_INVALID_VALUE);
+}
+
 uint16_t adc_value,a1,a2,a3,a4,adc_value1,adc_value2,adc_value3,adc_value4,adc_value5,adc_value6,adc_value7,adc_value8;
 // 使用Read_ADS1118_Direct函数读取所有传感器数据
 void Read_ADS1118_Direct(void) {
@@ -1625,8 +1735,7 @@ void task_100ms(void) {
 
 // 200ms任务
 void task_200ms(void) {
-    Read_ADS1118_Direct();
-    CAN_Send_All_ADC_Raw_Data();
+    ADC420_ScanAndSend();
 //     HTM440_Task();
     
     // 空任务
