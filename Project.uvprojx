@@ -672,38 +672,38 @@
             </File>
           </Files>
         </Group>
-                <Group>
+                        <Group>
           <GroupName>Hardware</GroupName>
           <Files>
             <File>
               <FileName>can.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\\Hardware\\can.c</FilePath>
+              <FilePath>.\Hardware\can.c</FilePath>
             </File>
             <File>
               <FileName>can.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\\Hardware\\can.h</FilePath>
+              <FilePath>.\Hardware\can.h</FilePath>
             </File>
             <File>
               <FileName>ads1118_spi.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\\Hardware\\ads1118_spi.c</FilePath>
+              <FilePath>.\Hardware\ads1118_spi.c</FilePath>
             </File>
             <File>
               <FileName>ads1118_spi.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\\Hardware\\ads1118_spi.h</FilePath>
+              <FilePath>.\Hardware\ads1118_spi.h</FilePath>
             </File>
             <File>
               <FileName>adc420_app.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\\Hardware\\adc420_app.c</FilePath>
+              <FilePath>.\Hardware\adc420_app.c</FilePath>
             </File>
             <File>
               <FileName>adc420_app.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\\Hardware\\adc420_app.h</FilePath>
+              <FilePath>.\Hardware\adc420_app.h</FilePath>
             </File>
           </Files>
         </Group>

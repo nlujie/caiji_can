@@ -25,7 +25,6 @@ uint8_t CAN_Module_Init(void)
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_CAN1, ENABLE);
 
     /* Use the default CAN1 mapping: PA12=TX, PA11=RX. */
-    GPIO_PinRemapConfig(GPIO_Remap1_CAN1, DISABLE);
 
     gpio.GPIO_Pin = GPIO_Pin_12;
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
