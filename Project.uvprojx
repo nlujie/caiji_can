@@ -678,32 +678,32 @@
             <File>
               <FileName>adc420_ads1118.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\\Hardware\\adc420_ads1118.c</FilePath>
+              <FilePath>.\Hardware\adc420_ads1118.c</FilePath>
             </File>
             <File>
               <FileName>adc420_ads1118.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\\Hardware\\adc420_ads1118.h</FilePath>
+              <FilePath>.\Hardware\adc420_ads1118.h</FilePath>
             </File>
             <File>
               <FileName>adc420_app.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\\Hardware\\adc420_app.c</FilePath>
+              <FilePath>.\Hardware\adc420_app.c</FilePath>
             </File>
             <File>
               <FileName>adc420_app.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\\Hardware\\adc420_app.h</FilePath>
+              <FilePath>.\Hardware\adc420_app.h</FilePath>
             </File>
             <File>
               <FileName>adc420_can.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\\Hardware\\adc420_can.c</FilePath>
+              <FilePath>.\Hardware\adc420_can.c</FilePath>
             </File>
             <File>
               <FileName>adc420_can.h</FileName>
               <FileType>5</FileType>
-              <FilePath>.\\Hardware\\adc420_can.h</FilePath>
+              <FilePath>.\Hardware\adc420_can.h</FilePath>
             </File>
           </Files>
         </Group>
