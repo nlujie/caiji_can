@@ -22,7 +22,7 @@ static void wait_cycles(volatile uint32_t n)
 }
 static void wait_ms(uint32_t ms)
 {
-    while (ms--) wait_cycles(SystemCoreClock / 8000U);
+    while (ms--) wait_cycles(SystemCoreClock / 2000U);
 }
 static void all_cs_high(void)
 {
@@ -57,7 +57,7 @@ static uint16_t ads1118_read(ADC420_Chip chip, uint8_t channel)
 
     /* OS=1 single-shot; MUX=AINx-to-GND; PGA=+/-2.048V;
        DR=128SPS. Config base 0xC4EB matches the existing board driver. */
-    config = (uint16_t)(0xC4EBU | ((uint16_t)(channel & 0x03U) << 12));
+    config = (uint16_t)(0xC5EBU | ((uint16_t)(channel & 0x03U) << 12));
     select_chip(chip);
     wait_cycles(80U);
     (void)spi1_transfer((uint8_t)(config >> 8));
