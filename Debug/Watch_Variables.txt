@@ -1,0 +1,58 @@
+STM32F103C8 ADC420 / ADS1118 / CAN debug variables (Keil Watch)
+
+Startup:
+adc420_debug_init_stage
+adc420_debug_system_clock_hz
+adc420_debug_spi_init_ok
+adc420_debug_can_init_ok
+adc420_boot_error
+adc420_debug_main_loop_count
+
+ADC raw/current:
+adc420_raw[0] ... adc420_raw[9]
+adc420_current_ua[0] ... adc420_current_ua[9]
+adc420_valid_mask
+adc420_fault_mask
+adc420_sequence
+adc420_scan_count
+adc420_last_can_failures
+
+Current SPI transaction:
+adc420_debug_scan_in_progress
+adc420_debug_current_index
+adc420_debug_current_board_channel
+adc420_debug_current_chip
+adc420_debug_current_ain
+adc420_debug_last_spi_ok
+adc420_debug_last_spi_state
+adc420_debug_last_raw
+adc420_debug_last_current_ua
+adc420_debug_scan_duration_ms
+adc420_debug_channel_success_count[0] ... [9]
+adc420_debug_channel_fail_count[0] ... [9]
+
+SPI hardware:
+adc420_debug_spi_init_done
+adc420_debug_spi_current_chip
+adc420_debug_spi_current_channel
+adc420_debug_spi_last_error
+adc420_debug_cs_gpio_odr
+adc420_spi_state[0] ... [2]
+adc420_spi_cfg_sent[0] ... [2]
+adc420_spi_cfg_echo[0] ... [2]
+adc420_spi_previous_result[0] ... [2]
+adc420_spi_success_count[0] ... [2]
+
+CAN:
+adc420_can_initialized
+adc420_can_tx_ok
+adc420_can_tx_failed
+adc420_debug_can_last_id
+adc420_debug_can_last_dlc
+adc420_debug_can_last_data[0] ... [7]
+adc420_debug_can_last_result
+adc420_debug_can_attempt_count
+adc420_debug_can_esr
+adc420_debug_can_msr
+adc420_debug_can_tsr
+adc420_debug_can_btr
