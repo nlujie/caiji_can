@@ -12,7 +12,7 @@ static void ClockDelay(volatile uint32_t n)
 
 static void DelayMs(uint32_t ms)
 {
-    while (ms--) ClockDelay(SystemCoreClock / 8000U);
+    while (ms--) ClockDelay(SystemCoreClock / 2000U);
 }
 
 static void CAN1_Init_500K(void)
