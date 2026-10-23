@@ -1,7 +1,7 @@
 #include "stm32f10x.h"
-#include "adc420_ads1118.h"
-#include "adc420_can.h"
-#include "adc420_app.h"
+#include "../Hardware/adc420_ads1118.h"
+#include "../Hardware/adc420_can.h"
+#include "../Hardware/adc420_app.h"
 
 /* Keil ARMCC5-compatible minimal 4-20mA acquisition firmware.
  * 10 channels, external ADS1118 SPI ADC, CAN1 at 500kbps.
