@@ -27,6 +27,8 @@ uint16_t adc420_config_echo[ADC420_CHANNEL_COUNT] = {0};
 uint32_t adc420_spi_error_count[3] = {0};
 uint32_t adc420_can_tx_ok_count = 0;
 uint32_t adc420_can_tx_error_count = 0;
+uint32_t adc420_echo_mismatch_count[3] = {0U, 0U, 0U};
+uint8_t adc420_scan_sequence = 0U;
 
 
 // 在func.c的全局变量区域添加
@@ -494,47 +496,39 @@ static const ADC420_ChannelMap_t adc420_channel_map[ADC420_CHANNEL_COUNT] =
 /* 原理图中各4-20mA输入接100Ω(0.1%)取样电阻和LMV324跟随器。
  * ADS1118使用±2.048V满量程，16bit二补码，1LSB=62.5uV。
  */
+/* ADC: signed 16bit, +/-2.048V, PCB shunt 100 ohm.
+ * CAN transmits measured current in 0.01mA increments, even if below4mA,
+ * so an unplugged transmitter is visible as 0 (with UNDER_RANGE status),
+ * not hidden as FF FF. 0xFFFF is reserved for SPI transport errors ONLY.
+ */
 static uint16_t ADC420_RawToCentiMa(uint16_t raw, uint8_t *status,
-                                     float *voltage_v_out, float *current_ma_out)
+                                    float *voltage_v_out, float *current_ma_out)
 {
     int16_t signed_raw = (int16_t)raw;
     float voltage_v = (float)signed_raw * ADC420_ADC_FULL_SCALE_V /
                       ADC420_ADC_POSITIVE_COUNTS;
     float current_ma = voltage_v * 1000.0f / ADC420_SHUNT_RESISTOR_OHM;
-    float scaled_ma;
-    uint16_t rounded;
+    float count;
+    uint16_t centi;
 
     *voltage_v_out = voltage_v;
     *current_ma_out = current_ma;
     *status = ADC420_STATUS_OK;
-    if(signed_raw < 0 || current_ma < 0.0f)
+
+    if(signed_raw < 0)
     {
         *status = ADC420_STATUS_UNDER_RANGE;
-        return ADC420_CAN_INVALID_VALUE;
+        return 0U;
     }
-    if(signed_raw == 32767)
-    {
-        *status = ADC420_STATUS_OVER_RANGE;
-        return ADC420_CAN_INVALID_VALUE;
-    }
-    scaled_ma = current_ma * 100.0f;
-    if(scaled_ma > 65534.0f)
-    {
-        *status = ADC420_STATUS_OVER_RANGE;
-        return ADC420_CAN_INVALID_VALUE;
-    }
-    rounded = (uint16_t)(scaled_ma + 0.5f);
-    if(rounded < ADC420_FAULT_LOW_CENTIMA)
-    {
+    count = current_ma * 100.0f;
+    if(count > 65534.0f) count = 65534.0f;
+    centi = (uint16_t)(count + 0.5f);
+
+    if(centi < ADC420_FAULT_LOW_CENTIMA)
         *status = ADC420_STATUS_UNDER_RANGE;
-        return ADC420_CAN_INVALID_VALUE;
-    }
-    if(rounded > ADC420_FAULT_HIGH_CENTIMA)
-    {
+    else if(centi > ADC420_FAULT_HIGH_CENTIMA || signed_raw == 32767)
         *status = ADC420_STATUS_OVER_RANGE;
-        return ADC420_CAN_INVALID_VALUE;
-    }
-    return rounded;
+    return centi;
 }
 
 /* 查询实际CAN硬件发送结果，而非仅确认帧放入了发送邮箱。 */
@@ -586,16 +580,45 @@ static void ADC420_SendFrame(uint16_t can_id,
     adc420_can_tx_error_count++;
 }
 
+/* Fast status frame path: diagnostic data are best-effort.
+ * The ordinary 3 current frames remain ACK-checked by ADC420_SendFrame.
+ */
+static void ADC420_SendDiagnostic(CanTxMsg *msg)
+{
+    uint8_t mb = CAN_Transmit(CAN1, msg);
+    uint32_t start, polls;
+    if(mb == CAN_TxStatus_NoMailBox)
+    {
+        adc420_can_tx_error_count++;
+        return;
+    }
+    start = task_tim1.time_1ms;
+    for(polls = 0U; polls < 100000UL; polls++)
+    {
+        uint8_t state = CAN_TransmitStatus(CAN1, mb);
+        if(state == CAN_TxStatus_Ok)
+        {
+            adc420_can_tx_ok_count++;
+            return;
+        }
+        if(state == CAN_TxStatus_Failed ||
+           (uint32_t)(task_tim1.time_1ms - start) >= 5U) break;
+    }
+    CAN_CancelTransmit(CAN1, mb);
+    adc420_can_tx_error_count++;
+}
+
 void ADC420_ScanAndSend(void)
 {
     uint8_t i;
 
-    for(i = 0; i < ADC420_CHANNEL_COUNT; i++)
+    for(i = 0U; i < ADC420_CHANNEL_COUNT; i++)
     {
         uint8_t chip = adc420_channel_map[i].chip;
-        if(!ADS1118_ReadChannelChecked_SPI1(chip, adc420_channel_map[i].channel,
-                                            &adc420_raw_samples[i],
-                                            &adc420_config_echo[i]))
+        uint8_t readStatus = ADS1118_ReadChannelChecked_SPI1(
+            chip, adc420_channel_map[i].channel, &adc420_raw_samples[i],
+            &adc420_config_echo[i]);
+        if(readStatus == 0U)
         {
             adc420_spi_error_count[chip - 1U]++;
             adc420_status[i] = ADC420_STATUS_SPI_ERROR;
@@ -609,7 +632,15 @@ void ADC420_ScanAndSend(void)
                                 &adc420_status[i],
                                 &adc420_voltage_v[i],
                                 &adc420_current_ma[i]);
+        if(readStatus == 2U)
+        {
+            /* Don't silently lose a plausible reading on a readback error;
+               CAN status explicitly warns that channel selection is unverified. */
+            adc420_echo_mismatch_count[chip - 1U]++;
+            adc420_status[i] = ADC420_STATUS_CONFIG_MISMATCH;
+        }
     }
+    adc420_scan_sequence++;
 
     /* 0x120: ADC_2、ADC_3、ADC_4、ADC_5 */
     ADC420_SendFrame(CAN_ID_ADC420_GROUP1,
@@ -625,12 +656,51 @@ void ADC420_ScanAndSend(void)
                      adc420_current_centi_ma[6],
                      adc420_current_centi_ma[7]);
 
-    /* 0x122: ADC_10、ADC_11；后两个字为保留位，填0xFFFF。 */
+    /* 0x122后四字节现在固定为0，避免上位机误认为四路失效。 */
     ADC420_SendFrame(CAN_ID_ADC420_GROUP3,
                      adc420_current_centi_ma[8],
-                     adc420_current_centi_ma[9],
-                     ADC420_CAN_INVALID_VALUE,
-                     ADC420_CAN_INVALID_VALUE);
+                     adc420_current_centi_ma[9], 0U, 0U);
+
+    /* 0x130~0x132: 10路ADC原始码（未经电流越限屏蔽）。 */
+    ADC420_SendFrame(CAN_ID_ADC420_RAW1,
+                     adc420_raw_samples[0], adc420_raw_samples[1],
+                     adc420_raw_samples[2], adc420_raw_samples[3]);
+    ADC420_SendFrame(CAN_ID_ADC420_RAW2,
+                     adc420_raw_samples[4], adc420_raw_samples[5],
+                     adc420_raw_samples[6], adc420_raw_samples[7]);
+    ADC420_SendFrame(CAN_ID_ADC420_RAW3,
+                     adc420_raw_samples[8], adc420_raw_samples[9], 0U, 0U);
+
+    /* 0x133: ADC_2..ADC_9每路一个状态字节（8字节）。 */
+    {
+        CanTxMsg msg;
+        uint8_t k;
+        msg.StdId = CAN_ID_ADC420_STATUS1;
+        msg.ExtId = CAN_ID_ADC420_STATUS1;
+        msg.IDE = CAN_Id_Standard;
+        msg.RTR = CAN_RTR_Data;
+        msg.DLC = 8U;
+        for(k = 0U; k < 8U; k++) msg.Data[k] = adc420_status[k];
+        ADC420_SendDiagnostic(&msg);
+    }
+    /* 0x134: ADC_10/11状态+三个芯片SPI错误计数低字节+轮次。 */
+    {
+        CanTxMsg msg;
+        msg.StdId = CAN_ID_ADC420_STATUS2;
+        msg.ExtId = CAN_ID_ADC420_STATUS2;
+        msg.IDE = CAN_Id_Standard;
+        msg.RTR = CAN_RTR_Data;
+        msg.DLC = 8U;
+        msg.Data[0] = adc420_status[8];
+        msg.Data[1] = adc420_status[9];
+        msg.Data[2] = (uint8_t)adc420_spi_error_count[0];
+        msg.Data[3] = (uint8_t)adc420_spi_error_count[1];
+        msg.Data[4] = (uint8_t)adc420_spi_error_count[2];
+        msg.Data[5] = adc420_scan_sequence;
+        msg.Data[6] = (uint8_t)adc420_echo_mismatch_count[0];
+        msg.Data[7] = (uint8_t)adc420_echo_mismatch_count[2];
+        ADC420_SendDiagnostic(&msg);
+    }
 }
 
 uint16_t adc_value,a1,a2,a3,a4,adc_value1,adc_value2,adc_value3,adc_value4,adc_value5,adc_value6,adc_value7,adc_value8;

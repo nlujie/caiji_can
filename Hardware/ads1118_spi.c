@@ -299,7 +299,7 @@ void SPI1_Init(void)
     SPI_InitStructure.SPI_CPOL = SPI_CPOL_Low;// 空闲时钟低电平
     SPI_InitStructure.SPI_CPHA = SPI_CPHA_2Edge;// 第二个边沿采样
     SPI_InitStructure.SPI_NSS = SPI_NSS_Soft;// 软件管理片选
-    SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32; // 72MHz APB2下约2.25MHz，满足ADS1118时钟要求
+    SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_64; // 约1.125MHz，降低ISO7741/PCB连线时序风险
     SPI_InitStructure.SPI_FirstBit = SPI_FirstBit_MSB;// 高位先发
     SPI_InitStructure.SPI_CRCPolynomial = 7;
     SPI_Init(SPI1, &SPI_InitStructure);
@@ -361,7 +361,7 @@ void ADS1118_Init(void)
     ADC_CS3_High();
 
     SPI1_Init();
-    SPI1_SetSpeed(SPI_BaudRatePrescaler_32);
+    SPI1_SetSpeed(SPI_BaudRatePrescaler_64);
 }
 
 void SPI1_SetSpeed(u8 SPI_BaudRatePrescaler)
@@ -406,6 +406,16 @@ u8 ADS1118_ReadWrite_SPI1(u8 ConfigReg1)
  * 原理图：三片ADS1118共用SPI1，N_O1/2/3分别由PB0/PB1/PB10经PC817驱动。
  * 采用TI ADS1118数据手册9.5.7.1的32-bit格式读取Config回显检查连通性。
  */
+/* -------------------------------------------------------------------------
+ * Board: 3 x ADS1118, SPI1 shared, PB0(N_O1), PB1(N_O2), PB10(N_O3).
+ * N_O1 uses ISO7741; N_O2/N_O3 use PC817 in low-active select circuits.
+ * Datasheet 9.5.7: 16 clocks can start a single-shot conversion and 16 more
+ * clocks in a separate /CS transaction can read its completed conversion.
+ * The second transaction sends NOP 0x0000, NOT another conversion config.
+ * Use 32-clock config readback for *diagnosis*, not as a hard data gate.
+ * ------------------------------------------------------------------------- */
+volatile u8 ads1118_drdy_before_read[3] = {0U, 0U, 0U};
+
 static void ADS1118_CS_AllHigh(void)
 {
     ADC_CS1_High();
@@ -430,14 +440,15 @@ static u8 ADS1118_SPI1_ExchangeChecked(u8 tx, u8 *rx)
     return 1U;
 }
 
-static u8 ADS1118_SPI1_Transfer32(u8 chip, u16 cfg, u16 *raw, u16 *echo)
+static u8 ADS1118_SPI1_Frame(u8 chip, u16 outWord, u16 *inWord,
+                              u8 *readyLow)
 {
-    u8 data[4] = {0U, 0U, 0U, 0U};
-    u8 ok;
+    u8 rxHi = 0U, rxLo = 0U;
+    u8 ok = 1U;
     u32 timeout;
     volatile u16 discard;
 
-    if(chip < 1U || chip > 3U || raw == 0 || echo == 0) return 0U;
+    if(chip < 1U || chip > 3U || inWord == 0) return 0U;
     if(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_OVR) == SET)
     {
         discard = SPI1->DR;
@@ -446,65 +457,120 @@ static u8 ADS1118_SPI1_Transfer32(u8 chip, u16 cfg, u16 *raw, u16 *echo)
     }
 
     ADS1118_CS_AllHigh();
-    Delay_us(30); /* PC817关断稳定 */
+    Delay_us(60); /* 光耦与隔离输出完成恢复 */
     if(chip == 1U) ADC_CS1_Low();
     else if(chip == 2U) ADC_CS2_Low();
     else ADC_CS3_Low();
-    Delay_us(30); /* PC817导通，模拟侧/CS稳定 */
+    Delay_us(60); /* PC817低电平有效片选稳定后再发时钟 */
 
-    ok = ADS1118_SPI1_ExchangeChecked((u8)(cfg >> 8), &data[0]);
-    if(ok) ok = ADS1118_SPI1_ExchangeChecked((u8)cfg, &data[1]);
-    if(ok) ok = ADS1118_SPI1_ExchangeChecked(0U, &data[2]);
-    if(ok) ok = ADS1118_SPI1_ExchangeChecked(0U, &data[3]);
+    /* DOUT/DRDY is readable on PA6 when /CS is low, before the clock train. */
+    if(readyLow != 0)
+        *readyLow = (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_6) == Bit_RESET) ? 1U : 0U;
+
+    ok = ADS1118_SPI1_ExchangeChecked((u8)(outWord >> 8), &rxHi);
+    if(ok) ok = ADS1118_SPI1_ExchangeChecked((u8)outWord, &rxLo);
+
     timeout = 30000U;
     while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY) == SET)
     {
         if(--timeout == 0U) { ok = 0U; break; }
     }
     ADS1118_CS_AllHigh();
-    Delay_us(30);
+    Delay_us(60);
 
-    *raw = ((u16)data[0] << 8) | (u16)data[1];
-    *echo = ((u16)data[2] << 8) | (u16)data[3];
-    /* SS(bit15)读回始终为0，其他配置位必须匹配，否则为SPI故障。 */
-    if(!ok || ((*echo & 0x7FFFU) != (cfg & 0x7FFFU))) return 0U;
-    return 1U;
+    *inWord = ((u16)rxHi << 8) | (u16)rxLo;
+    return ok;
 }
 
+/* 32-clock exchange only for independent config register readback diagnostics. */
+static u8 ADS1118_SPI1_CheckEcho(u8 chip, u16 cfg, u16 *echoOut)
+{
+    u16 oldResult, echo;
+    u8 data[4] = {0U, 0U, 0U, 0U};
+    u8 ok = 1U;
+    u32 timeout;
+    if(chip < 1U || chip > 3U || echoOut == 0) return 0U;
+    *echoOut = 0U;
+    ADS1118_CS_AllHigh();
+    Delay_us(60);
+    if(chip == 1U) ADC_CS1_Low();
+    else if(chip == 2U) ADC_CS2_Low();
+    else ADC_CS3_Low();
+    Delay_us(60);
+
+    ok = ADS1118_SPI1_ExchangeChecked((u8)(cfg >> 8), &data[0]);
+    if(ok) ok = ADS1118_SPI1_ExchangeChecked((u8)cfg, &data[1]);
+    if(ok) ok = ADS1118_SPI1_ExchangeChecked(0x00U, &data[2]);
+    if(ok) ok = ADS1118_SPI1_ExchangeChecked(0x00U, &data[3]);
+    timeout = 30000U;
+    while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY) == SET)
+    {
+        if(--timeout == 0U) { ok = 0U; break; }
+    }
+    ADS1118_CS_AllHigh();
+    Delay_us(60);
+    oldResult = ((u16)data[0] << 8) | (u16)data[1];
+    (void)oldResult;
+    echo = ((u16)data[2] << 8) | (u16)data[3];
+    *echoOut = echo;
+    return ok;
+}
+
+/* return 0=transport error/stuck bus, 1=sample and config verified,
+ *        2=sample read but config echo disagrees (untrusted measurement).
+ */
 u8 ADS1118_ReadChannelChecked_SPI1(u8 chip, u8 channel,
                                    u16 *raw, u16 *last_config_echo)
 {
-    u16 cfg, old_data, echo = 0U;
-    u8 retry;
-    if(raw == 0 || last_config_echo == 0 || chip < 1U || chip > 3U || channel > 3U)
-        return 0U;
+    u16 cfg;
+    u16 discarded = 0U;
+    u16 sample = 0U;
+    u16 echo = 0U;
+    u8 attempt;
+    u8 drdyLow = 0U;
+    u8 echoTransferred;
+    u8 echoMatches;
+
+    if(raw == 0 || last_config_echo == 0 ||
+       chip < 1U || chip > 3U || channel > 3U) return 0U;
+
     cfg = (u16)(ADS1118_CONFIG_AIN0 + ((u16)channel << 12));
-    *raw = 0xFFFFU;
+    *raw = 0U;
     *last_config_echo = 0U;
-    for(retry = 0; retry < 2U; retry++)
+    ads1118_drdy_before_read[chip - 1U] = 0U;
+
+    for(attempt = 0U; attempt < 2U; attempt++)
     {
-        /* SS=1启动860SPS单次转换；32bit同时回读Config状态。 */
-        if(!ADS1118_SPI1_Transfer32(chip, cfg, &old_data, &echo))
-        {
-            *last_config_echo = echo;
-            continue;
-        }
-        Delay_ms(3); /* 转换时间≈1.16ms；加余量 */
-        if(ADS1118_SPI1_Transfer32(chip, cfg, raw, &echo))
-        {
-            *last_config_echo = echo;
-            return 1U;
-        }
+        /* Single-shot start, 860SPS, PGA +/-2.048V. */
+        if(!ADS1118_SPI1_Frame(chip, cfg, &discarded, 0)) continue;
+        Delay_ms(4);
+        /* Get completed sample; send NOP, so no new conversion is started. */
+        if(!ADS1118_SPI1_Frame(chip, 0x0000U, &sample, &drdyLow)) continue;
+        ads1118_drdy_before_read[chip - 1U] = drdyLow;
+        *raw = sample;
+
+        /* Diagnostic echo uses an independent 32-clock command and does
+           not overwrite the sample already captured above. */
+        echoTransferred = ADS1118_SPI1_CheckEcho(chip, cfg, &echo);
         *last_config_echo = echo;
+        echoMatches = (echoTransferred &&
+                      ((echo & 0x7FFFU) == (cfg & 0x7FFFU))) ? 1U : 0U;
+
+        /* FFFF/0000 simultaneously on raw and config readback strongly
+           indicates an undriven MISO or failed isolation/power. */
+        if((sample == 0xFFFFU && echo == 0xFFFFU) ||
+           (sample == 0x0000U && echo == 0x0000U && !drdyLow))
+            continue;
+
+        if(echoMatches) return 1U;
+        return 2U; /* Preserve true raw value for CAN diagnostics. */
     }
-    *raw = 0xFFFFU;
     return 0U;
 }
 
-/* 兼容旧接口。新采集任务应使用Checked接口区分ADC负1码与通信失败。 */
 u16 ADS1118_ReadChannel_SPI1(u8 chip, u8 channel)
 {
-    u16 raw = 0xFFFFU, echo;
+    u16 raw = 0U, echo = 0U;
     (void)ADS1118_ReadChannelChecked_SPI1(chip, channel, &raw, &echo);
     return raw;
 }

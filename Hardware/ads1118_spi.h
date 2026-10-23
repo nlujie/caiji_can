@@ -32,7 +32,9 @@ u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg);
 u16 ADS1118_ReadVotage_SPI2(u16 ConfigReg);
 /* chip: 1=N_O1/PB0, 2=N_O2/PB1, 3=N_O3/PB10; channel: AIN0..AIN3 */
 u16 ADS1118_ReadChannel_SPI1(u8 chip, u8 channel);
-/* 1=SPI/config echo OK; 0=SPI error. chip=1/2/3, channel=0..3. */
+extern volatile u8 ads1118_drdy_before_read[3];
+/* return: 0=SPI read failure; 1=config echo OK; 2=raw read but config mismatch.
+   Raw reading and echo are separate diagnostics, avoiding all-0xFFFF masking. */
 u8 ADS1118_ReadChannelChecked_SPI1(u8 chip, u8 channel,
                                    u16 *raw, u16 *last_config_echo);
 

@@ -19,6 +19,8 @@
 #define ADC420_STATUS_SPI_ERROR      1U
 #define ADC420_STATUS_UNDER_RANGE    2U
 #define ADC420_STATUS_OVER_RANGE     3U
+#define ADC420_STATUS_CONFIG_MISMATCH 4U
+/* Raw 0xFFFF only indicates SPI fault; under/over-range values still sent. */
 
 // 定义滤波结构体
 typedef struct {
@@ -80,6 +82,8 @@ extern uint16_t adc420_config_echo[ADC420_CHANNEL_COUNT];
 extern uint32_t adc420_spi_error_count[3];
 extern uint32_t adc420_can_tx_ok_count;
 extern uint32_t adc420_can_tx_error_count;
+extern uint32_t adc420_echo_mismatch_count[3];
+extern uint8_t adc420_scan_sequence;
 void ADC420_ScanAndSend(void);
 
 // SPI1第一个芯片 (PA4片选) - 全局变量
@@ -141,7 +145,13 @@ extern uint16_t filtered_adc_spi2_ain3;
 /* 外部4-20mA传感器CAN报文：标准帧、8字节、每通道uint16小端序、单位0.01mA。 */
 #define CAN_ID_ADC420_GROUP1   0x120  /* ADC_2、ADC_3、ADC_4、ADC_5 */
 #define CAN_ID_ADC420_GROUP2   0x121  /* ADC_6、ADC_7、ADC_8、ADC_9 */
-#define CAN_ID_ADC420_GROUP3   0x122  /* ADC_10、ADC_11、保留、保留 */
+#define CAN_ID_ADC420_GROUP3   0x122  /* ADC_10、ADC_11、0、0 */
+/* 诊断帧保留与原有0x120~0x122上位机协议兼容。 */
+#define CAN_ID_ADC420_RAW1     0x130 /* 原码ADC_2..5 */
+#define CAN_ID_ADC420_RAW2     0x131 /* 原码ADC_6..9 */
+#define CAN_ID_ADC420_RAW3     0x132 /* 原码ADC_10..11, 0, 0 */
+#define CAN_ID_ADC420_STATUS1  0x133 /* 单字节状态ADC_2..9 */
+#define CAN_ID_ADC420_STATUS2  0x134 /* ADC_10/11状态和SPI错误计数、序号 */
 #define ADC420_CAN_INVALID_VALUE 0xFFFF
 
 
