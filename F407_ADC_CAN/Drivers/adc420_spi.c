@@ -51,6 +51,7 @@ static void adc420_select(uint8_t chip)
     } else {
         GPIOB_BSRR = 1UL << (10U + 16U); /* PB10 LOW */
     }
+    adc420_debug_cs_gpio_odr = GPIOB_ODR;
     adc420_spin_us(100UL);
 }
 
@@ -186,6 +187,7 @@ uint8_t ADC420_SPI_Read(uint8_t chip, uint8_t channel, int16_t *result)
     adc420_deselect();
     if (!ok) {
         adc420_spi_state[chip] = 2U;
+        adc420_debug_spi_last_error = 2U;
         return 0U;
     }
 

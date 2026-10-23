@@ -50,6 +50,7 @@ uint8_t ADC420_CAN_Init(void)
     }
     if ((CAN1_MSR & 1UL) == 0UL) {
         adc420_can_initialized = 0U;
+        adc420_debug_can_snapshot();
         return 0U;
     }
 
