@@ -1,0 +1,119 @@
+STM32F407VGT6 + ADS1118 + CAN - Keil Watch 变量清单
+==========================================================
+将下列变量逐项加入 Keil Debug -> Watch 1。所有 adc420_debug_* 变量均为 volatile，
+可在运行/暂停时观察。数组索引与逻辑通道的对应关系：
+index 0..9 = ADC_2, ADC_3, ADC_4, ADC_5, ADC_6, ADC_7, ADC_8, ADC_9, ADC_10, ADC_11。
+
+【启动/运行】
+adc420_debug_init_stage
+adc420_debug_system_clock_hz
+adc420_debug_spi_init_ok
+adc420_debug_can_init_ok
+adc420_debug_main_loop_count
+adc420_debug_scan_in_progress
+adc420_debug_scan_duration_ms
+
+init_stage: 0=复位初值，1=时钟已配置，2=毫秒时基已启动，
+3=SPI 已配置，4=CAN 初始化已尝试，5=主循环运行。
+
+【逐通道 ADC 数据】
+adc420_debug_current_index
+adc420_debug_current_board_channel
+adc420_debug_current_chip
+adc420_debug_current_ain
+adc420_debug_last_spi_ok
+adc420_debug_last_spi_state
+adc420_debug_last_raw
+adc420_debug_last_current_ua
+adc420_raw[0]
+adc420_raw[1]
+adc420_raw[2]
+adc420_raw[3]
+adc420_raw[4]
+adc420_raw[5]
+adc420_raw[6]
+adc420_raw[7]
+adc420_raw[8]
+adc420_raw[9]
+adc420_current_ua[0]
+adc420_current_ua[1]
+adc420_current_ua[2]
+adc420_current_ua[3]
+adc420_current_ua[4]
+adc420_current_ua[5]
+adc420_current_ua[6]
+adc420_current_ua[7]
+adc420_current_ua[8]
+adc420_current_ua[9]
+adc420_valid_mask
+adc420_fault_mask
+adc420_debug_channel_success_count[0]
+adc420_debug_channel_success_count[1]
+adc420_debug_channel_success_count[2]
+adc420_debug_channel_success_count[3]
+adc420_debug_channel_success_count[4]
+adc420_debug_channel_success_count[5]
+adc420_debug_channel_success_count[6]
+adc420_debug_channel_success_count[7]
+adc420_debug_channel_success_count[8]
+adc420_debug_channel_success_count[9]
+adc420_debug_channel_fail_count[0]
+adc420_debug_channel_fail_count[1]
+adc420_debug_channel_fail_count[2]
+adc420_debug_channel_fail_count[3]
+adc420_debug_channel_fail_count[4]
+adc420_debug_channel_fail_count[5]
+adc420_debug_channel_fail_count[6]
+adc420_debug_channel_fail_count[7]
+adc420_debug_channel_fail_count[8]
+adc420_debug_channel_fail_count[9]
+
+【SPI / 三片 ADS1118】
+adc420_debug_spi_init_done
+adc420_debug_spi_current_chip
+adc420_debug_spi_current_channel
+adc420_debug_spi_last_error
+adc420_debug_cs_gpio_odr
+adc420_spi_state[0]
+adc420_spi_state[1]
+adc420_spi_state[2]
+adc420_spi_cfg_sent[0]
+adc420_spi_cfg_sent[1]
+adc420_spi_cfg_sent[2]
+adc420_spi_cfg_echo[0]
+adc420_spi_cfg_echo[1]
+adc420_spi_cfg_echo[2]
+adc420_spi_success_count[0]
+adc420_spi_success_count[1]
+adc420_spi_success_count[2]
+
+spi_state: 0=尚未运行，1=成功，2=SPI 超时，3=配置回读不匹配。
+spi_last_error: 0=无错误/成功，1=参数错误，2=SPI 超时，3=配置回读不匹配。
+spi_current_chip: 0=N_O1，1=N_O2，2=N_O3。
+cs_gpio_odr 反映 MCU 侧 GPIOB 输出寄存器，不代表隔离器另一侧的实际电平。
+
+【CAN 发送】
+adc420_can_initialized
+adc420_can_tx_ok
+adc420_can_tx_failed
+adc420_debug_can_attempt_count
+adc420_debug_can_last_id
+adc420_debug_can_last_dlc
+adc420_debug_can_last_data[0]
+adc420_debug_can_last_data[1]
+adc420_debug_can_last_data[2]
+adc420_debug_can_last_data[3]
+adc420_debug_can_last_data[4]
+adc420_debug_can_last_data[5]
+adc420_debug_can_last_data[6]
+adc420_debug_can_last_data[7]
+adc420_debug_can_last_result
+adc420_debug_can_esr
+adc420_debug_can_msr
+adc420_debug_can_tsr
+adc420_debug_can_btr
+adc420_last_can_failures
+
+can_last_result: 0=尚未发送，1=发送成功，2=未初始化/参数错误，
+3=没有空闲邮箱，4=发送超时（常见原因是总线无 ACK），5=控制器报告发送失败。
+CAN 错误寄存器快照可帮助判断 bus-off、错误计数等问题；请结合 STM32F407 参考手册解释 ESR 位域。

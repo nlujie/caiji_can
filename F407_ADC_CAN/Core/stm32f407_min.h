@@ -1,0 +1,61 @@
+#ifndef STM32F407_MIN_H
+#define STM32F407_MIN_H
+
+#include <stdint.h>
+
+/* Minimal register map for the peripherals used by this standalone project. */
+#define REG32(addr) (*(volatile uint32_t *)(uintptr_t)(addr))
+
+#define RCC_CR       REG32(0x40023800UL)
+#define RCC_PLLCFGR  REG32(0x40023804UL)
+#define RCC_CFGR     REG32(0x40023808UL)
+#define RCC_AHB1ENR  REG32(0x40023830UL)
+#define RCC_APB1ENR  REG32(0x40023840UL)
+#define RCC_APB2ENR  REG32(0x40023844UL)
+#define PWR_CR       REG32(0x40007000UL)
+#define FLASH_ACR    REG32(0x40023C00UL)
+
+#define GPIOA_BASE   0x40020000UL
+#define GPIOB_BASE   0x40020400UL
+#define GPIOA_MODER  REG32(GPIOA_BASE + 0x00UL)
+#define GPIOA_OTYPER REG32(GPIOA_BASE + 0x04UL)
+#define GPIOA_OSPEEDR REG32(GPIOA_BASE + 0x08UL)
+#define GPIOA_PUPDR  REG32(GPIOA_BASE + 0x0CUL)
+#define GPIOA_IDR    REG32(GPIOA_BASE + 0x10UL)
+#define GPIOA_ODR    REG32(GPIOA_BASE + 0x14UL)
+#define GPIOA_BSRR   REG32(GPIOA_BASE + 0x18UL)
+#define GPIOA_AFRL   REG32(GPIOA_BASE + 0x20UL)
+#define GPIOA_AFRH   REG32(GPIOA_BASE + 0x24UL)
+#define GPIOB_MODER  REG32(GPIOB_BASE + 0x00UL)
+#define GPIOB_OTYPER REG32(GPIOB_BASE + 0x04UL)
+#define GPIOB_OSPEEDR REG32(GPIOB_BASE + 0x08UL)
+#define GPIOB_PUPDR  REG32(GPIOB_BASE + 0x0CUL)
+#define GPIOB_IDR    REG32(GPIOB_BASE + 0x10UL)
+#define GPIOB_ODR    REG32(GPIOB_BASE + 0x14UL)
+#define GPIOB_BSRR   REG32(GPIOB_BASE + 0x18UL)
+#define GPIOB_AFRL   REG32(GPIOB_BASE + 0x20UL)
+#define GPIOB_AFRH   REG32(GPIOB_BASE + 0x24UL)
+
+#define SPI1_BASE    0x40013000UL
+#define SPI1_CR1     REG32(SPI1_BASE + 0x00UL)
+#define SPI1_CR2     REG32(SPI1_BASE + 0x04UL)
+#define SPI1_SR      REG32(SPI1_BASE + 0x08UL)
+#define SPI1_DR      REG32(SPI1_BASE + 0x0CUL)
+
+#define CAN1_BASE    0x40006400UL
+#define CAN1_MCR     REG32(CAN1_BASE + 0x00UL)
+#define CAN1_MSR     REG32(CAN1_BASE + 0x04UL)
+#define CAN1_TSR     REG32(CAN1_BASE + 0x08UL)
+#define CAN1_ESR     REG32(CAN1_BASE + 0x18UL)
+#define CAN1_BTR     REG32(CAN1_BASE + 0x1CUL)
+#define CAN1_TX_MAILBOX(n) ((volatile uint32_t *)(uintptr_t)(CAN1_BASE + 0x180UL + ((uint32_t)(n) * 0x10UL)))
+
+#define SYST_CSR     REG32(0xE000E010UL)
+#define SYST_RVR     REG32(0xE000E014UL)
+#define SYST_CVR     REG32(0xE000E018UL)
+
+extern uint32_t SystemCoreClock;
+void SystemInit(void);
+void SystemCoreClockUpdate(void);
+
+#endif
