@@ -7,23 +7,23 @@
 
   <Targets>
     <Target>
-      <TargetName>Target 1</TargetName>
+      <TargetName>STM32F407VGT6 ADC CAN</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
       <pCCUsed>5060528::V5.06 update 5 (build 528)::ARMCC</pCCUsed>
       <uAC6>0</uAC6>
       <TargetOption>
         <TargetCommonOption>
-          <Device>STM32F103C8</Device>
+          <Device>STM32F407VG</Device>
           <Vendor>STMicroelectronics</Vendor>
-          <PackID>Keil.STM32F1xx_DFP.2.2.0</PackID>
+          <PackID>Keil.STM32F4xx_DFP.2.17.1</PackID>
           <PackURL>http://www.keil.com/pack/</PackURL>
-          <Cpu>IRAM(0x20000000,0x5000) IROM(0x08000000,0x10000) CPUTYPE("Cortex-M3") CLOCK(12000000) ELITTLE</Cpu>
+          <Cpu>IRAM(0x20000000,0x20000) IROM(0x08000000,0x100000) CPUTYPE("Cortex-M4") CLOCK(168000000) ELITTLE</Cpu>
           <FlashUtilSpec></FlashUtilSpec>
           <StartupFile></StartupFile>
-          <FlashDriverDll>UL2CM3(-S0 -C0 -P0 -FD20000000 -FC1000 -FN1 -FF0STM32F10x_128 -FS08000000 -FL020000 -FP0($$Device:STM32F103C8$Flash\STM32F10x_128.FLM))</FlashDriverDll>
+          <FlashDriverDll>UL2CM3(-S0 -C0 -P0 -FD20000000 -FC1000 -FN1 -FF0STM32F4xx_1024 -FS08000000 -FL0100000 -FP0($$Device:STM32F407VG$Flash\STM32F4xx_1024.FLM))</FlashDriverDll>
           <DeviceId>0</DeviceId>
-          <RegisterFile>$$Device:STM32F103C8$Device\Include\stm32f10x.h</RegisterFile>
+          <RegisterFile>$$Device:STM32F407VG$Device\Include\stm32f407xx.h</RegisterFile>
           <MemoryEnv></MemoryEnv>
           <Cmp></Cmp>
           <Asm></Asm>
@@ -33,11 +33,11 @@
           <SLE66CMisc></SLE66CMisc>
           <SLE66AMisc></SLE66AMisc>
           <SLE66LinkerMisc></SLE66LinkerMisc>
-          <SFDFile>$$Device:STM32F103C8$SVD\STM32F103xx.svd</SFDFile>
+          <SFDFile>$$Device:STM32F407VG$SVD\STM32F407xx.svd</SFDFile>
           <bCustSvd>0</bCustSvd>
           <UseEnv>0</UseEnv>
           <BinPath></BinPath>
-          <IncludePath></IncludePath>
+          <IncludePath>.;.\F407_ADC_CAN\Core;.\F407_ADC_CAN\App;.\F407_ADC_CAN\Drivers</IncludePath>
           <LibPath></LibPath>
           <RegisterFilePath></RegisterFilePath>
           <DBRegisterFilePath></DBRegisterFilePath>
@@ -46,16 +46,16 @@
             <ExitCodeStop>0</ExitCodeStop>
             <ButtonStop>0</ButtonStop>
             <NotGenerated>0</NotGenerated>
-            <InvalidFlash>1</InvalidFlash>
+            <InvalidFlash>0</InvalidFlash>
           </TargetStatus>
-          <OutputDirectory>.\Objects\</OutputDirectory>
-          <OutputName>Project</OutputName>
+          <OutputDirectory>.\F407_ADC_CAN\Objects\</OutputDirectory>
+          <OutputName>Project_F407</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
-          <CreateHexFile>0</CreateHexFile>
+          <CreateHexFile>1</CreateHexFile>
           <DebugInformation>1</DebugInformation>
           <BrowseInformation>1</BrowseInformation>
-          <ListingPath>.\Listings\</ListingPath>
+          <ListingPath>.\F407_ADC_CAN\Listings\</ListingPath>
           <HexFormatSelection>1</HexFormatSelection>
           <Merge32K>0</Merge32K>
           <CreateBatchFile>0</CreateBatchFile>
@@ -109,14 +109,14 @@
           <ComprImg>1</ComprImg>
         </CommonProperty>
         <DllOption>
-          <SimDllName>SARMCM3.DLL</SimDllName>
+          <SimDllName>SARMCM4.DLL</SimDllName>
           <SimDllArguments> -REMAP</SimDllArguments>
           <SimDlgDll>DCM.DLL</SimDlgDll>
-          <SimDlgDllArguments>-pCM3</SimDlgDllArguments>
-          <TargetDllName>SARMCM3.DLL</TargetDllName>
+          <SimDlgDllArguments>-pCM4</SimDlgDllArguments>
+          <TargetDllName>SARMCM4.DLL</TargetDllName>
           <TargetDllArguments></TargetDllArguments>
           <TargetDlgDll>TCM.DLL</TargetDlgDll>
-          <TargetDlgDllArguments>-pCM3</TargetDlgDllArguments>
+          <TargetDlgDllArguments>-pCM4</TargetDlgDllArguments>
         </DllOption>
         <DebugOption>
           <OPTHX>
@@ -174,7 +174,7 @@
             <AdsLsxf>1</AdsLsxf>
             <RvctClst>0</RvctClst>
             <GenPPlst>0</GenPPlst>
-            <AdsCpuType>"Cortex-M3"</AdsCpuType>
+            <AdsCpuType>"Cortex-M4"</AdsCpuType>
             <RvctDeviceName></RvctDeviceName>
             <mOS>0</mOS>
             <uocRom>0</uocRom>
@@ -244,12 +244,12 @@
               <IRAM>
                 <Type>0</Type>
                 <StartAddress>0x20000000</StartAddress>
-                <Size>0x5000</Size>
+                <Size>0x20000</Size>
               </IRAM>
               <IROM>
                 <Type>1</Type>
                 <StartAddress>0x8000000</StartAddress>
-                <Size>0x10000</Size>
+                <Size>0x100000</Size>
               </IROM>
               <XRAM>
                 <Type>0</Type>
@@ -274,7 +274,7 @@
               <OCR_RVCT4>
                 <Type>1</Type>
                 <StartAddress>0x8000000</StartAddress>
-                <Size>0x10000</Size>
+                <Size>0x100000</Size>
               </OCR_RVCT4>
               <OCR_RVCT5>
                 <Type>1</Type>
@@ -299,7 +299,7 @@
               <OCR_RVCT9>
                 <Type>0</Type>
                 <StartAddress>0x20000000</StartAddress>
-                <Size>0x5000</Size>
+                <Size>0x20000</Size>
               </OCR_RVCT9>
               <OCR_RVCT10>
                 <Type>0</Type>
@@ -334,9 +334,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define>USE_STDPERIPH_DRIVER</Define>
+              <Define>STM32F407xx</Define>
               <Undefine></Undefine>
-              <IncludePath>.\Start;.\User;.\Library;.\System;.\Hardware</IncludePath>
+              <IncludePath>.;.\F407_ADC_CAN\Core;.\F407_ADC_CAN\App;.\F407_ADC_CAN\Drivers</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -354,7 +354,7 @@
               <MiscControls></MiscControls>
               <Define></Define>
               <Undefine></Undefine>
-              <IncludePath></IncludePath>
+              <IncludePath>.;.\F407_ADC_CAN\Core;.\F407_ADC_CAN\App;.\F407_ADC_CAN\Drivers</IncludePath>
             </VariousControls>
           </Aads>
           <LDads>
@@ -376,339 +376,22 @@
           </LDads>
         </TargetArmAds>
       </TargetOption>
-      <Groups>
-        <Group>
-          <GroupName>Start</GroupName>
-          <Files>
-            <File>
-              <FileName>startup_stm32f10x_md.s</FileName>
-              <FileType>2</FileType>
-              <FilePath>.\Start\startup_stm32f10x_md.s</FilePath>
-            </File>
-            <File>
-              <FileName>core_cm3.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Start\core_cm3.c</FilePath>
-            </File>
-            <File>
-              <FileName>core_cm3.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Start\core_cm3.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Start\stm32f10x.h</FilePath>
-            </File>
-            <File>
-              <FileName>system_stm32f10x.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Start\system_stm32f10x.c</FilePath>
-            </File>
-            <File>
-              <FileName>system_stm32f10x.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Start\system_stm32f10x.h</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>Libaray</GroupName>
-          <Files>
-            <File>
-              <FileName>misc.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\misc.h</FilePath>
-            </File>
-            <File>
-              <FileName>misc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\misc.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_adc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_adc.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_adc.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_adc.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_bkp.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_bkp.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_bkp.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_bkp.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_can.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_can.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_can.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_can.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_cec.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_cec.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_cec.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_cec.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_crc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_crc.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_crc.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_crc.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_dac.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_dac.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_dac.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_dac.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_dbgmcu.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_dbgmcu.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_dbgmcu.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_dbgmcu.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_dma.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_dma.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_dma.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_dma.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_exti.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_exti.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_exti.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_exti.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_flash.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_flash.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_flash.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_flash.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_fsmc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_fsmc.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_fsmc.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_fsmc.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_gpio.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_gpio.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_gpio.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_gpio.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_i2c.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_i2c.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_i2c.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_i2c.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_iwdg.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_iwdg.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_iwdg.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_iwdg.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_pwr.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_pwr.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_pwr.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_pwr.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_rcc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_rcc.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_rcc.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_rcc.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_rtc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_rtc.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_rtc.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_rtc.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_sdio.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_sdio.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_sdio.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_sdio.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_spi.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_spi.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_spi.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_spi.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_tim.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_tim.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_tim.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_tim.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_usart.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_usart.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_usart.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_usart.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_wwdg.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Library\stm32f10x_wwdg.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_wwdg.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Library\stm32f10x_wwdg.h</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>User</GroupName>
-          <Files>
-            <File>
-              <FileName>main.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\User\main.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_conf.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\User\stm32f10x_conf.h</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_it.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\User\stm32f10x_it.c</FilePath>
-            </File>
-            <File>
-              <FileName>stm32f10x_it.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\User\stm32f10x_it.h</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>Hardware</GroupName>
-          <Files>
-            <File>
-              <FileName>adc420_spi.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\adc420_spi.c</FilePath>
-            </File>
-            <File>
-              <FileName>adc420_spi.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\adc420_spi.h</FilePath>
-            </File>
-            <File>
-              <FileName>adc420_app.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\adc420_app.c</FilePath>
-            </File>
-            <File>
-              <FileName>adc420_app.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\adc420_app.h</FilePath>
-            </File>
-            <File>
-              <FileName>adc420_can.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\adc420_can.c</FilePath>
-            </File>
-            <File>
-              <FileName>adc420_can.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\adc420_can.h</FilePath>
-            </File>
-          </Files>
-        </Group>
-        
-      </Groups>
+      <Groups><Group><GroupName>Core</GroupName><Files>
+<File><FileName>startup_stm32f407xx.s</FileName><FileType>2</FileType><FilePath>.\F407_ADC_CAN\Core\startup_stm32f407xx.s</FilePath></File>
+<File><FileName>system_stm32f407xx.c</FileName><FileType>1</FileType><FilePath>.\F407_ADC_CAN\Core\system_stm32f407xx.c</FilePath></File>
+<File><FileName>stm32f407_min.h</FileName><FileType>5</FileType><FilePath>.\F407_ADC_CAN\Core\stm32f407_min.h</FilePath></File>
+<File><FileName>timebase.c</FileName><FileType>1</FileType><FilePath>.\F407_ADC_CAN\Core\timebase.c</FilePath></File>
+<File><FileName>timebase.h</FileName><FileType>5</FileType><FilePath>.\F407_ADC_CAN\Core\timebase.h</FilePath></File>
+</Files></Group><Group><GroupName>Drivers</GroupName><Files>
+<File><FileName>adc420_spi.c</FileName><FileType>1</FileType><FilePath>.\F407_ADC_CAN\Drivers\adc420_spi.c</FilePath></File>
+<File><FileName>adc420_spi.h</FileName><FileType>5</FileType><FilePath>.\F407_ADC_CAN\Drivers\adc420_spi.h</FilePath></File>
+<File><FileName>adc420_can.c</FileName><FileType>1</FileType><FilePath>.\F407_ADC_CAN\Drivers\adc420_can.c</FilePath></File>
+<File><FileName>adc420_can.h</FileName><FileType>5</FileType><FilePath>.\F407_ADC_CAN\Drivers\adc420_can.h</FilePath></File>
+</Files></Group><Group><GroupName>Application</GroupName><Files>
+<File><FileName>main.c</FileName><FileType>1</FileType><FilePath>.\F407_ADC_CAN\App\main.c</FilePath></File>
+<File><FileName>adc420_app.c</FileName><FileType>1</FileType><FilePath>.\F407_ADC_CAN\App\adc420_app.c</FilePath></File>
+<File><FileName>adc420_app.h</FileName><FileType>5</FileType><FilePath>.\F407_ADC_CAN\App\adc420_app.h</FilePath></File>
+</Files></Group></Groups>
     </Target>
   </Targets>
 
