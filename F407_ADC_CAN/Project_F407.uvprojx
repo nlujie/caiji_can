@@ -37,7 +37,7 @@
           <bCustSvd>0</bCustSvd>
           <UseEnv>0</UseEnv>
           <BinPath></BinPath>
-          <IncludePath>.;.\\Core;.\\App;.\\Drivers</IncludePath>
+          <IncludePath>.;.\Core;.\App;.\Drivers</IncludePath>
           <LibPath></LibPath>
           <RegisterFilePath></RegisterFilePath>
           <DBRegisterFilePath></DBRegisterFilePath>
@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>STM32F407xx</Define>
               <Undefine></Undefine>
-              <IncludePath>.;.\\Core;.\\App;.\\Drivers</IncludePath>
+              <IncludePath>.;.\Core;.\App;.\Drivers</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
