@@ -23,6 +23,8 @@ int main(void)
     }
 
     ADC420_ADS1118_Init();
+    /* Verify SPI chip links using internal sensors before reading external inputs. */
+    (void)ADC420_ADS1118_SelfTest();
     can_ready = ADC420_CAN_Init();
     last_cycle = ADC420_Millis() - ADC420_CAN_PERIOD_MS;
     while (1) {

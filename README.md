@@ -57,3 +57,34 @@ The four ADS1118 channels not in the 10-input mapping (N_O2 AIN0/1 and any unuse
 **Validation status**: source/schema and conversion arithmetic are reviewable; no ARMCC hardware build, SWD flash, oscilloscope or physical CAN measurement can be performed in this session. Rebuild All and bench qualification are required before deployment.
 
 **Sources**: board schematic `stm32f103c8t6(1).pdf`, `使用说明(1).docx` section 二; TI ADS1118 datasheet (SBAS457F).
+
+
+## Keil Watch diagnostics (P1 connected but `adc420_raw[2]` is zero)
+
+`adc420_raw[2]` = P1 / ADC_4 (ADS1118 N_O1/PB0 AIN0).
+The new driver clocks a complete **32-bit write + config readback** before
+the 16-bit measurement read. It rejects unacknowledged configuration rather
+than incorrectly marking floating SPI as valid.
+
+Watch these global variables, using Run / Halt cycles (or enable Periodic Window Update):
+
+- `adc420_tick_ms`: 1-ms timer, should increase.
+- `adc420_sequence`: ~10 increments/s, wraps after 255.
+- `adc420_diag_temp_ok_mask`: startup temperature self-test; bit0 means N_O1 responding, bit1 N_O2, bit2 N_O3; typically `0x07`.
+- `adc420_diag_temp_raw[0]`: N_O1 internal temperature 16-bit left-aligned reading. Near 25C -> ~3200. `-32768` means read failed. **A valid internal temperature is independent of P1 sensor wiring.**
+- `adc420_diag_spi_state[0]`: N_O1 digital-link status: 0 not read, 1 verified, 2 SPI timeout, 3 config echo mismatch, 4 conversion read timeout.
+- `adc420_diag_config_written[0]`: most recent cfg sent to N_O1 (cycling between AIN0..3).
+- `adc420_diag_config_echo[0]`: N_O1 response to same cfg; bits 14:4 must match the request.
+- `adc420_diag_read_count[0]`: successful N_O1 reads, increases 4 times per acquisition cycle.
+- `adc420_raw[2]`: ADC_4, about 6400 at 4mA / 19200 at 12mA / 32000 at 20mA.
+- `adc420_current_ua[2]`: approx 4000 / 12000 / 20000 uA.
+
+**Interpreting the diagnostic**:
+
+1. If timer/sequence stay fixed across Run→Halt cycles, check the program's state/debugger.
+2. If `adc420_diag_spi_state[0] = 3` or `adc420_diag_temp_ok_mask & 1 == 0`, inspect N_O1 PB0, PA5/PA6/PA7, ADS1118 supply and board routing. Normal SPI controller transfers alone did not guarantee a connected ADS1118.
+3. If N_O1 self-test passes but `adc420_raw[2]` stays ~0, use a multimeter to check the **100-ohm shunt** across P1's current-input path and the conditioned AIN0 node. Expected shunt voltage 0.4..2.0V. P1 is a connector for a live current loop, not a source of current. Confirm 24V supply and correct return path before injecting a calibrated 4/12/20mA.
+4. If shunt is 0.4..2.0V but AIN0 is near 0, troubleshoot LMV324 analog buffer / filtering / shorts. If AIN0 has valid voltage but ADS1118 raw remains zero, inspect SPI configuration and chip input soldering.
+5. CAN failures (e.g., `adc420_can_error_count=4` if no ACK) are independent of the ADC analog path and must not be confused with sampling errors.
+
+**IMPORTANT:** Self-test and config readback improve diagnostics; they do not replace an ARMCC build or bench validation. Existing CAN frame protocol and channel mapping remain unchanged.
