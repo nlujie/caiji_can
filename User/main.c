@@ -368,6 +368,7 @@ uint16_t val;
         
 	while(1)
 	{
+        uint32_t current_time;
         
          // 必须添加Modbus轮询
      ////   ModbusRTU_Poll();
@@ -404,7 +405,7 @@ uint16_t val;
         
         /* Feed CAN and one ADC input from an independent foreground service. */
         ADC420_CommunicationsService();
-        uint32_t current_time = task_tim1.time_1ms;
+        current_time = task_tim1.time_1ms;
         
         // 100ms任务
         if(current_time - last_100ms >= 100) {
