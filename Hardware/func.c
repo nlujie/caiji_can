@@ -862,7 +862,6 @@ void task_100ms(void) {
 // 200ms任务
 void task_200ms(void) {
     Read_ADS1118_Direct();
-    CAN_Send_All_ADC_Raw_Data();
 //     HTM440_Task();
     
     // 空任务
