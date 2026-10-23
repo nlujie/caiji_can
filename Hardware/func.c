@@ -22,6 +22,11 @@ uint16_t adc420_current_centi_ma[ADC420_CHANNEL_COUNT] = {0};
 /* Keil Watch: 对应ADC_2..ADC_11，采样电压(V)及换算电流(mA)。 */
 float adc420_voltage_v[ADC420_CHANNEL_COUNT] = {0};
 float adc420_current_ma[ADC420_CHANNEL_COUNT] = {0};
+uint8_t adc420_status[ADC420_CHANNEL_COUNT] = {0};
+uint16_t adc420_config_echo[ADC420_CHANNEL_COUNT] = {0};
+uint32_t adc420_spi_error_count[3] = {0};
+uint32_t adc420_can_tx_ok_count = 0;
+uint32_t adc420_can_tx_error_count = 0;
 
 
 // 在func.c的全局变量区域添加
@@ -486,76 +491,99 @@ static const ADC420_ChannelMap_t adc420_channel_map[ADC420_CHANNEL_COUNT] =
     {3, 0}  /* ADC_11: N_O3/AIN0，P6-11 */
 };
 
-static uint16_t ADC420_RawToCentiMa(uint16_t raw_value,
-                                     float *voltage_v_out,
-                                     float *current_ma_out)
+/* 原理图中各4-20mA输入接100Ω(0.1%)取样电阻和LMV324跟随器。
+ * ADS1118使用±2.048V满量程，16bit二补码，1LSB=62.5uV。
+ */
+static uint16_t ADC420_RawToCentiMa(uint16_t raw, uint8_t *status,
+                                     float *voltage_v_out, float *current_ma_out)
 {
-    int16_t signed_raw = (int16_t)raw_value;
-    float voltage_v;
-    float current_ma;
-    float centi_ma_f;
-    uint16_t centi_ma;
-
-    /* ADS1118输出为16位有符号码，±2.048V是PGA满量程。
-       0~32767对应0~接近+2.048V；不能用uint16_t的65535作除数。 */
-    voltage_v = ((float)signed_raw * ADC420_ADC_FULL_SCALE_V) /
-                ADC420_ADC_POSITIVE_COUNTS;
-    /* 欧姆定律：V / Ω = A，乘1000转换为mA。 */
-    current_ma = (voltage_v * 1000.0f) / ADC420_SHUNT_RESISTOR_OHM;
+    int16_t signed_raw = (int16_t)raw;
+    float voltage_v = (float)signed_raw * ADC420_ADC_FULL_SCALE_V /
+                      ADC420_ADC_POSITIVE_COUNTS;
+    float current_ma = voltage_v * 1000.0f / ADC420_SHUNT_RESISTOR_OHM;
+    float scaled_ma;
+    uint16_t rounded;
 
     *voltage_v_out = voltage_v;
     *current_ma_out = current_ma;
-
-    /* 无效值需显式上报，禁止把断线/负电压夹到4mA。 */
+    *status = ADC420_STATUS_OK;
     if(signed_raw < 0 || current_ma < 0.0f)
     {
+        *status = ADC420_STATUS_UNDER_RANGE;
         return ADC420_CAN_INVALID_VALUE;
     }
-
-    /* 按0.01mA四舍五入，避免浮点误差导致20.00mA被误判。 */
-    centi_ma_f = current_ma * 100.0f;
-    if(centi_ma_f > 65534.0f)
+    if(signed_raw == 32767)
     {
+        *status = ADC420_STATUS_OVER_RANGE;
         return ADC420_CAN_INVALID_VALUE;
     }
-    centi_ma = (uint16_t)(centi_ma_f + 0.5f);
-    if(centi_ma < ADC420_MIN_CURRENT_CENTIMA ||
-       centi_ma > ADC420_MAX_CURRENT_CENTIMA)
+    scaled_ma = current_ma * 100.0f;
+    if(scaled_ma > 65534.0f)
     {
+        *status = ADC420_STATUS_OVER_RANGE;
         return ADC420_CAN_INVALID_VALUE;
     }
-    return centi_ma;
+    rounded = (uint16_t)(scaled_ma + 0.5f);
+    if(rounded < ADC420_FAULT_LOW_CENTIMA)
+    {
+        *status = ADC420_STATUS_UNDER_RANGE;
+        return ADC420_CAN_INVALID_VALUE;
+    }
+    if(rounded > ADC420_FAULT_HIGH_CENTIMA)
+    {
+        *status = ADC420_STATUS_OVER_RANGE;
+        return ADC420_CAN_INVALID_VALUE;
+    }
+    return rounded;
 }
 
+/* 查询实际CAN硬件发送结果，而非仅确认帧放入了发送邮箱。 */
 static void ADC420_SendFrame(uint16_t can_id,
-                             uint16_t value0,
-                             uint16_t value1,
-                             uint16_t value2,
-                             uint16_t value3)
+                             uint16_t value0, uint16_t value1,
+                             uint16_t value2, uint16_t value3)
 {
     CanTxMsg tx_msg;
     uint16_t values[4];
-    uint8_t i;
+    uint8_t mailbox, state, i;
+    uint32_t start_time, polls;
 
     values[0] = value0;
     values[1] = value1;
     values[2] = value2;
     values[3] = value3;
-
     tx_msg.StdId = can_id;
     tx_msg.ExtId = can_id;
     tx_msg.IDE = CAN_Id_Standard;
     tx_msg.RTR = CAN_RTR_Data;
-    tx_msg.DLC = 8;
-
-    /* 每个通道占2字节，小端序，单位0.01mA。 */
-    for(i = 0; i < 4; i++)
+    tx_msg.DLC = 8U;
+    for(i = 0; i < 4U; i++)
     {
-        tx_msg.Data[i * 2] = (uint8_t)(values[i] & 0xFFU);
-        tx_msg.Data[i * 2 + 1] = (uint8_t)(values[i] >> 8);
+        tx_msg.Data[i * 2U] = (uint8_t)(values[i] & 0xFFU);
+        tx_msg.Data[i * 2U + 1U] = (uint8_t)(values[i] >> 8);
     }
 
-    (void)CAN_SendMessage(&tx_msg);
+    mailbox = CAN_Transmit(CAN1, &tx_msg);
+    if(mailbox == CAN_TxStatus_NoMailBox)
+    {
+        adc420_can_tx_error_count++;
+        return;
+    }
+
+    start_time = task_tim1.time_1ms; /* TIM3独立1ms时基 */
+    for(polls = 0; polls < 200000UL; polls++)
+    {
+        state = CAN_TransmitStatus(CAN1, mailbox);
+        if(state == CAN_TxStatus_Ok)
+        {
+            adc420_can_tx_ok_count++;
+            return;
+        }
+        if(state == CAN_TxStatus_Failed) break;
+        if((uint32_t)(task_tim1.time_1ms - start_time) >= 5U) break;
+    }
+    /* 对端无ACK或断线时，回收邮箱避免后续采集数据无法发送。 */
+    CAN_CancelTransmit(CAN1, mailbox);
+    adc420_can_tx_error_count++;
 }
 
 void ADC420_ScanAndSend(void)
@@ -564,11 +592,21 @@ void ADC420_ScanAndSend(void)
 
     for(i = 0; i < ADC420_CHANNEL_COUNT; i++)
     {
-        adc420_raw_samples[i] =
-            ADS1118_ReadChannel_SPI1(adc420_channel_map[i].chip,
-                                     adc420_channel_map[i].channel);
+        uint8_t chip = adc420_channel_map[i].chip;
+        if(!ADS1118_ReadChannelChecked_SPI1(chip, adc420_channel_map[i].channel,
+                                            &adc420_raw_samples[i],
+                                            &adc420_config_echo[i]))
+        {
+            adc420_spi_error_count[chip - 1U]++;
+            adc420_status[i] = ADC420_STATUS_SPI_ERROR;
+            adc420_current_centi_ma[i] = ADC420_CAN_INVALID_VALUE;
+            adc420_voltage_v[i] = 0.0f;
+            adc420_current_ma[i] = 0.0f;
+            continue;
+        }
         adc420_current_centi_ma[i] =
             ADC420_RawToCentiMa(adc420_raw_samples[i],
+                                &adc420_status[i],
                                 &adc420_voltage_v[i],
                                 &adc420_current_ma[i]);
     }

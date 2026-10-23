@@ -402,69 +402,111 @@ u8 ADS1118_ReadWrite_SPI1(u8 ConfigReg1)
     return SPI_I2S_ReceiveData(SPI1);// 读取接收到的数据
 }
 
-/* 所有ADS1118芯片共用SPI1；切换MUX后等待一次转换完成，再读取稳定结果。 */
-static void ADS1118_SPI1_AllCSHigh(void)
+/*
+ * 原理图：三片ADS1118共用SPI1，N_O1/2/3分别由PB0/PB1/PB10经PC817驱动。
+ * 采用TI ADS1118数据手册9.5.7.1的32-bit格式读取Config回显检查连通性。
+ */
+static void ADS1118_CS_AllHigh(void)
 {
     ADC_CS1_High();
     ADC_CS2_High();
     ADC_CS3_High();
 }
 
-static u16 ADS1118_SPI1_Transfer(u8 chip, u16 config)
+static u8 ADS1118_SPI1_ExchangeChecked(u8 tx, u8 *rx)
 {
-    u8 high_byte = 0;
-    u8 low_byte = 0;
-
-    ADS1118_SPI1_AllCSHigh();
-    if(chip == 1)
+    u32 timeout = 30000U;
+    while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET)
     {
-        ADC_CS1_Low();
+        if(--timeout == 0U) return 0U;
     }
-    else if(chip == 2)
+    SPI_I2S_SendData(SPI1, tx);
+    timeout = 30000U;
+    while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_RXNE) == RESET)
     {
-        ADC_CS2_Low();
+        if(--timeout == 0U) return 0U;
     }
-    else if(chip == 3)
-    {
-        ADC_CS3_Low();
-    }
-    else
-    {
-        return 0;
-    }
-
-    Delay_us(2);
-    high_byte = ADS1118_ReadWrite_SPI1((u8)(config >> 8));
-    low_byte = ADS1118_ReadWrite_SPI1((u8)config);
-    Delay_us(2);
-    ADS1118_SPI1_AllCSHigh();
-
-    return ((u16)high_byte << 8) | (u16)low_byte;
+    *rx = (u8)SPI_I2S_ReceiveData(SPI1);
+    return 1U;
 }
 
+static u8 ADS1118_SPI1_Transfer32(u8 chip, u16 cfg, u16 *raw, u16 *echo)
+{
+    u8 data[4] = {0U, 0U, 0U, 0U};
+    u8 ok;
+    u32 timeout;
+    volatile u16 discard;
+
+    if(chip < 1U || chip > 3U || raw == 0 || echo == 0) return 0U;
+    if(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_OVR) == SET)
+    {
+        discard = SPI1->DR;
+        discard = SPI1->SR;
+        (void)discard;
+    }
+
+    ADS1118_CS_AllHigh();
+    Delay_us(30); /* PC817关断稳定 */
+    if(chip == 1U) ADC_CS1_Low();
+    else if(chip == 2U) ADC_CS2_Low();
+    else ADC_CS3_Low();
+    Delay_us(30); /* PC817导通，模拟侧/CS稳定 */
+
+    ok = ADS1118_SPI1_ExchangeChecked((u8)(cfg >> 8), &data[0]);
+    if(ok) ok = ADS1118_SPI1_ExchangeChecked((u8)cfg, &data[1]);
+    if(ok) ok = ADS1118_SPI1_ExchangeChecked(0U, &data[2]);
+    if(ok) ok = ADS1118_SPI1_ExchangeChecked(0U, &data[3]);
+    timeout = 30000U;
+    while(SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY) == SET)
+    {
+        if(--timeout == 0U) { ok = 0U; break; }
+    }
+    ADS1118_CS_AllHigh();
+    Delay_us(30);
+
+    *raw = ((u16)data[0] << 8) | (u16)data[1];
+    *echo = ((u16)data[2] << 8) | (u16)data[3];
+    /* SS(bit15)读回始终为0，其他配置位必须匹配，否则为SPI故障。 */
+    if(!ok || ((*echo & 0x7FFFU) != (cfg & 0x7FFFU))) return 0U;
+    return 1U;
+}
+
+u8 ADS1118_ReadChannelChecked_SPI1(u8 chip, u8 channel,
+                                   u16 *raw, u16 *last_config_echo)
+{
+    u16 cfg, old_data, echo = 0U;
+    u8 retry;
+    if(raw == 0 || last_config_echo == 0 || chip < 1U || chip > 3U || channel > 3U)
+        return 0U;
+    cfg = (u16)(ADS1118_CONFIG_AIN0 + ((u16)channel << 12));
+    *raw = 0xFFFFU;
+    *last_config_echo = 0U;
+    for(retry = 0; retry < 2U; retry++)
+    {
+        /* SS=1启动860SPS单次转换；32bit同时回读Config状态。 */
+        if(!ADS1118_SPI1_Transfer32(chip, cfg, &old_data, &echo))
+        {
+            *last_config_echo = echo;
+            continue;
+        }
+        Delay_ms(3); /* 转换时间≈1.16ms；加余量 */
+        if(ADS1118_SPI1_Transfer32(chip, cfg, raw, &echo))
+        {
+            *last_config_echo = echo;
+            return 1U;
+        }
+        *last_config_echo = echo;
+    }
+    *raw = 0xFFFFU;
+    return 0U;
+}
+
+/* 兼容旧接口。新采集任务应使用Checked接口区分ADC负1码与通信失败。 */
 u16 ADS1118_ReadChannel_SPI1(u8 chip, u8 channel)
 {
-    u16 config;
-
-    if(chip < 1 || chip > 3 || channel > 3)
-    {
-        return 0;
-    }
-
-    switch(channel)
-    {
-        case 0: config = ADS1118_CONFIG_AIN0; break;
-        case 1: config = ADS1118_CONFIG_AIN1; break;
-        case 2: config = ADS1118_CONFIG_AIN2; break;
-        case 3: config = ADS1118_CONFIG_AIN3; break;
-        default: return 0;
-    }
-
-    /* 第一次写入通道配置；ADS1118为860SPS时约1.16ms完成转换。 */
-    (void)ADS1118_SPI1_Transfer(chip, config);
-    Delay_ms(3);
-    /* 第二次SPI帧读取刚完成的目标通道结果。 */
-    return ADS1118_SPI1_Transfer(chip, config);
+    u16 raw = 0xFFFFU, echo;
+    (void)ADS1118_ReadChannelChecked_SPI1(chip, channel, &raw, &echo);
+    return raw;
 }
 
 u8 ADS1118_ReadWrite_SPI2(u8 ConfigReg1)

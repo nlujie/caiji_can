@@ -12,6 +12,13 @@
 #define ADC420_SHUNT_RESISTOR_OHM   100.0f
 #define ADC420_MIN_CURRENT_CENTIMA  400U
 #define ADC420_MAX_CURRENT_CENTIMA  2000U
+/* 现场4-20mA信号容忍少量偏差；<3.60mA断线，满量程饱和为异常。 */
+#define ADC420_FAULT_LOW_CENTIMA     360U
+#define ADC420_FAULT_HIGH_CENTIMA    2050U
+#define ADC420_STATUS_OK             0U
+#define ADC420_STATUS_SPI_ERROR      1U
+#define ADC420_STATUS_UNDER_RANGE    2U
+#define ADC420_STATUS_OVER_RANGE     3U
 
 // 定义滤波结构体
 typedef struct {
@@ -68,6 +75,11 @@ extern uint16_t adc420_raw_samples[ADC420_CHANNEL_COUNT];
 extern uint16_t adc420_current_centi_ma[ADC420_CHANNEL_COUNT];
 extern float adc420_voltage_v[ADC420_CHANNEL_COUNT];
 extern float adc420_current_ma[ADC420_CHANNEL_COUNT];
+extern uint8_t adc420_status[ADC420_CHANNEL_COUNT];
+extern uint16_t adc420_config_echo[ADC420_CHANNEL_COUNT];
+extern uint32_t adc420_spi_error_count[3];
+extern uint32_t adc420_can_tx_ok_count;
+extern uint32_t adc420_can_tx_error_count;
 void ADC420_ScanAndSend(void);
 
 // SPI1第一个芯片 (PA4片选) - 全局变量
