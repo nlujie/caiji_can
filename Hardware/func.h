@@ -4,7 +4,14 @@
 #include "stm32f10x.h"
 #include "filter.h"  // 包含滤波头文件
 
-#define ADC420_CHANNEL_COUNT 10
+/* ADS1118内部参考器件，PGA档位为±2.048V，16位有符号输出。 */
+#define ADC420_CHANNEL_COUNT        10
+#define ADC420_ADC_FULL_SCALE_V     2.048f
+#define ADC420_ADC_POSITIVE_COUNTS  32768.0f
+/* 实际硬件采样电阻(Ω)，当前默认值沿用原代码的100Ω设计假设。 */
+#define ADC420_SHUNT_RESISTOR_OHM   100.0f
+#define ADC420_MIN_CURRENT_CENTIMA  400U
+#define ADC420_MAX_CURRENT_CENTIMA  2000U
 
 // 定义滤波结构体
 typedef struct {
@@ -59,6 +66,8 @@ extern Task_Timer task_tim1;
 extern CAN_Message can_rx_msg;
 extern uint16_t adc420_raw_samples[ADC420_CHANNEL_COUNT];
 extern uint16_t adc420_current_centi_ma[ADC420_CHANNEL_COUNT];
+extern float adc420_voltage_v[ADC420_CHANNEL_COUNT];
+extern float adc420_current_ma[ADC420_CHANNEL_COUNT];
 void ADC420_ScanAndSend(void);
 
 // SPI1第一个芯片 (PA4片选) - 全局变量

@@ -19,6 +19,9 @@ CAN_Message can_rx_msg = {0, 0, 0, 0, {0}};
 /* 外部4-20mA通道：数组下标0..9依次对应ADC_2..ADC_11。 */
 uint16_t adc420_raw_samples[ADC420_CHANNEL_COUNT] = {0};
 uint16_t adc420_current_centi_ma[ADC420_CHANNEL_COUNT] = {0};
+/* Keil Watch: 对应ADC_2..ADC_11，采样电压(V)及换算电流(mA)。 */
+float adc420_voltage_v[ADC420_CHANNEL_COUNT] = {0};
+float adc420_current_ma[ADC420_CHANNEL_COUNT] = {0};
 
 
 // 在func.c的全局变量区域添加
@@ -200,7 +203,8 @@ void Serial_SendFloat(float value, int decimal_places) {
 
 
 // 参数定义
-#define SHUNT_RESISTOR_100OHM     100.0f
+/* 旧版传感器处理函数也采用与ADC420相同的采样电阻参数。 */
+#define SHUNT_RESISTOR_100OHM     ADC420_SHUNT_RESISTOR_OHM
 #define VOLTAGE_DIVIDER_RATIO     (10.0f / 2.048f)
 #define ADC_CONVERSION_FACTOR     0.0625f
 
@@ -284,8 +288,9 @@ void CAN_Module_Init(void) {
 
 // 将电压值转换为电流值 (使用100Ω分流电阻，2V量程)
 float ConvertVoltageToCurrent_2V(float voltage_v) {
-    if(voltage_v < 0.4f) voltage_v = 0.4f;
-    if(voltage_v > 2.0f) voltage_v = 2.0f;
+    /* 使用实际ADC采到的电压，不把小于4mA的信号强行抬升为4mA。 */
+    if(voltage_v < 0.0f) voltage_v = 0.0f;
+    if(voltage_v > ADC420_ADC_FULL_SCALE_V) voltage_v = ADC420_ADC_FULL_SCALE_V;
     return (voltage_v / SHUNT_RESISTOR_100OHM) * 1000.0f;
 }
 
@@ -456,8 +461,10 @@ void CAN_Send_All_ADC_Raw_Data(void) {
 }
 /* 按《采集板使用说明》映射10路外部4-20mA输入。
  * chip=1/2/3分别对应N_O1/PB0、N_O2/PB1、N_O3/PB10。
- * ADS1118的PGA为±2.048V，1 LSB=62.5uV；PCB按100Ω分流，
- * 因此电流(mA)=ADC原始码×0.000625，CAN发送值为0.01mA单位。
+ * ADC为ADS1118，PGA=±2.048V，正半轴32768个计数(LSB=62.5uV)。
+ * 采样电阻默认100Ω，请按实际PCB电阻修改ADC420_SHUNT_RESISTOR_OHM。
+ * 100Ω时4~20mA -> 0.4~2.0V -> 原始码6400~32000，
+ * 不是20mA -> 2.048V。CAN上传值为0.01mA单位。
  */
 typedef struct
 {
@@ -479,19 +486,45 @@ static const ADC420_ChannelMap_t adc420_channel_map[ADC420_CHANNEL_COUNT] =
     {3, 0}  /* ADC_11: N_O3/AIN0，P6-11 */
 };
 
-static uint16_t ADC420_RawToCentiMa(uint16_t raw_value)
+static uint16_t ADC420_RawToCentiMa(uint16_t raw_value,
+                                     float *voltage_v_out,
+                                     float *current_ma_out)
 {
     int16_t signed_raw = (int16_t)raw_value;
+    float voltage_v;
+    float current_ma;
+    float centi_ma_f;
+    uint16_t centi_ma;
 
-    /* 标称4-20mA对应0.4-2.0V，即ADC原始码约6400-32000。
-       超出范围时用0xFFFF标记，避免把断线/超量程伪装成正常电流。 */
-    if(signed_raw < 6400 || signed_raw > 32000)
+    /* ADS1118输出为16位有符号码，±2.048V是PGA满量程。
+       0~32767对应0~接近+2.048V；不能用uint16_t的65535作除数。 */
+    voltage_v = ((float)signed_raw * ADC420_ADC_FULL_SCALE_V) /
+                ADC420_ADC_POSITIVE_COUNTS;
+    /* 欧姆定律：V / Ω = A，乘1000转换为mA。 */
+    current_ma = (voltage_v * 1000.0f) / ADC420_SHUNT_RESISTOR_OHM;
+
+    *voltage_v_out = voltage_v;
+    *current_ma_out = current_ma;
+
+    /* 无效值需显式上报，禁止把断线/负电压夹到4mA。 */
+    if(signed_raw < 0 || current_ma < 0.0f)
     {
         return ADC420_CAN_INVALID_VALUE;
     }
 
-    /* 0.01mA单位：raw×0.000625mA×100 = raw/16。 */
-    return (uint16_t)(((uint32_t)signed_raw + 8U) / 16U);
+    /* 按0.01mA四舍五入，避免浮点误差导致20.00mA被误判。 */
+    centi_ma_f = current_ma * 100.0f;
+    if(centi_ma_f > 65534.0f)
+    {
+        return ADC420_CAN_INVALID_VALUE;
+    }
+    centi_ma = (uint16_t)(centi_ma_f + 0.5f);
+    if(centi_ma < ADC420_MIN_CURRENT_CENTIMA ||
+       centi_ma > ADC420_MAX_CURRENT_CENTIMA)
+    {
+        return ADC420_CAN_INVALID_VALUE;
+    }
+    return centi_ma;
 }
 
 static void ADC420_SendFrame(uint16_t can_id,
@@ -535,7 +568,9 @@ void ADC420_ScanAndSend(void)
             ADS1118_ReadChannel_SPI1(adc420_channel_map[i].chip,
                                      adc420_channel_map[i].channel);
         adc420_current_centi_ma[i] =
-            ADC420_RawToCentiMa(adc420_raw_samples[i]);
+            ADC420_RawToCentiMa(adc420_raw_samples[i],
+                                &adc420_voltage_v[i],
+                                &adc420_current_ma[i]);
     }
 
     /* 0x120: ADC_2、ADC_3、ADC_4、ADC_5 */

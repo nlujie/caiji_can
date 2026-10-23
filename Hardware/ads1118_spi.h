@@ -3,7 +3,9 @@
 
 #include "stm32f10x.h"
 
-// ÷2.048V좆넋토零 (PGA=010)
+/* ADS1118: PGA[2:0]=010 => ±2.048V满量程，16bit有符号值，1LSB=62.5uV。
+ * 此处配置的±2.048V档位不代表20mA对应2.048V；应由采样电阻决定。
+ */
 #define ADS1118_CONFIG_AIN0 0x44EB // AIN0데똥渴흙, ÷2.048V   0100 0100 1110 
 //#define ADS1118_CONFIG_AIN0 0xC5EB
 
