@@ -450,7 +450,7 @@ void CAN_Send_All_ADC_Raw_Data(void) {
     can_data.channels = raw_adc_spi2;
     CAN_Send_ADC_Raw_Data(CAN_ID_SPI2_RAW, &can_data);
 }
-uint16_t adc_value,a1,a2,a3,a4,adc_value1,adc_value2,adc_value3,adc_value4,adc_value5,adc_value6,adc_value7,adc_value8;
+volatile uint16_t adc_value,a1,a2,a3,a4,adc_value1,adc_value2,adc_value3,adc_value4,adc_value5,adc_value6,adc_value7,adc_value8;
 // 使用Read_ADS1118_Direct函数读取所有传感器数据
 /* Read all three ADS1118 devices from the PCB's shared SPI1 bus.
  * Chip-select mapping is PB0=N_O1, PB1=N_O2, PB10=N_O3.
