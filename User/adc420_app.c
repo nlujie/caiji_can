@@ -81,6 +81,7 @@ static uint8_t spi_transfer(SPI_TypeDef *spi, uint8_t data, uint8_t *received)
 static uint16_t ads1118_read(ADC420_Chip chip, uint8_t channel)
 {
     uint16_t config;
+    uint16_t read_config;
     uint8_t dummy;
     uint8_t hi;
     uint8_t lo;
@@ -92,6 +93,9 @@ static uint16_t ads1118_read(ADC420_Chip chip, uint8_t channel)
      * MUX bits are 100..111 for AIN0..AIN3; CS is active-low.
      */
     config = (uint16_t)(0xC58BU | ((uint16_t)(channel & 0x03U) << 12));
+    /* Read the completed result while writing OS=0, so this read does not
+       accidentally start an extra single-shot conversion. */
+    read_config = (uint16_t)(config & 0x7FFFU);
 
     select_chip(chip);
     wait_cycles(80U);
@@ -111,8 +115,8 @@ static uint16_t ads1118_read(ADC420_Chip chip, uint8_t channel)
      * ADS1118 shifts out the completed conversion while the next config
      * word is shifted in. Keep the returned high/low bytes as the ADC result.
      */
-    if (!spi_transfer(spi, (uint8_t)(config >> 8), &hi) ||
-        !spi_transfer(spi, (uint8_t)config, &lo)) {
+    if (!spi_transfer(spi, (uint8_t)(read_config >> 8), &hi) ||
+        !spi_transfer(spi, (uint8_t)read_config, &lo)) {
         all_cs_high();
         return 0U;
     }
@@ -183,6 +187,8 @@ void ADC420_Init(void)
     spi.SPI_FirstBit = SPI_FirstBit_MSB;
     spi.SPI_CRCPolynomial = 7U;
 
+    /* Keep SCLK below ADS1118's 4MHz limit: SPI1=72MHz/32=2.25MHz. */
+    spi.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;
     SPI_Init(SPI1, &spi);
     SPI_Cmd(SPI1, ENABLE);
 
@@ -195,6 +201,8 @@ void ADC420_Init(void)
     gpio.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(GPIOB, &gpio);
 
+    /* SPI2 clock is APB1=36MHz; /16 gives 2.25MHz. */
+    spi.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_16;
     SPI_Init(SPI2, &spi);
     SPI_Cmd(SPI2, ENABLE);
 }
