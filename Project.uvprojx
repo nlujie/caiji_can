@@ -650,7 +650,7 @@
         <Group>
           <GroupName>User</GroupName>
           <Files>
-            <File><FileName>main.c</FileName><FileType>1</FileType><FilePath>.\\User\\main.c</FilePath></File>
+            <File><FileName>main.c</FileName><FileType>1</FileType><FilePath>.\User\main.c</FilePath></File>
           </Files>
         </Group>
         
@@ -672,8 +672,8 @@
       <Group>
           <GroupName>ADC420 Application</GroupName>
           <Files>
-            <File><FileName>adc420_app.c</FileName><FileType>1</FileType><FilePath>.\\User\\adc420_app.c</FilePath></File>
-            <File><FileName>adc420_app.h</FileName><FileType>5</FileType><FilePath>.\\User\\adc420_app.h</FilePath></File>
+            <File><FileName>adc420_app.c</FileName><FileType>1</FileType><FilePath>.\User\adc420_app.c</FilePath></File>
+            <File><FileName>adc420_app.h</FileName><FileType>5</FileType><FilePath>.\User\adc420_app.h</FilePath></File>
           </Files>
         </Group>
       </Groups>
