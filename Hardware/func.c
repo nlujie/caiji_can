@@ -287,9 +287,12 @@ void CAN_Rx_Callback(CanRxMsg* rx_msg) {
 
 // CAN模块初始化
 void CAN_Module_Init(void) {
-    CAN_Mode_Init(CAN_SJW_1tq, CAN_BS2_8tq, CAN_BS1_9tq, 4, CAN_Mode_Normal);
-    CAN_SetRxCallback(CAN_Rx_Callback);
-    CAN_EnableInterrupt();
+    adc420_can_init_ok = (CAN_Mode_Init(CAN_SJW_1tq, CAN_BS2_8tq, CAN_BS1_9tq, 4, CAN_Mode_Normal) == 0U) ? 1U : 0U;
+    if(adc420_can_init_ok)
+    {
+        CAN_SetRxCallback(CAN_Rx_Callback);
+        CAN_EnableInterrupt();
+    }
 //    Serial_SendString("CAN module initialized with interrupt mode\r\n");
 }
 
@@ -700,6 +703,185 @@ void ADC420_ScanAndSend(void)
         msg.Data[6] = (uint8_t)adc420_echo_mismatch_count[0];
         msg.Data[7] = (uint8_t)adc420_echo_mismatch_count[2];
         ADC420_SendDiagnostic(&msg);
+    }
+}
+
+/* Foreground state machine: ADC transport can fail without stopping CAN.
+   All counters can be inspected in Keil Watch during hardware debug. */
+volatile uint8_t adc420_can_init_ok = 0U;
+volatile uint32_t adc420_can_service_count = 0U;
+volatile uint32_t adc420_adc_service_count = 0U;
+volatile uint32_t adc420_last_can_esr = 0U;
+volatile uint32_t adc420_last_can_tsr = 0U;
+volatile uint32_t adc420_last_tx_id = 0U;
+volatile uint32_t adc420_can_mailbox_busy_count = 0U;
+volatile uint32_t adc420_can_submit_count = 0U;
+
+static void ADC420_PackWord(CanTxMsg *frame, uint8_t word, uint16_t value)
+{
+    frame->Data[word * 2U] = (uint8_t)(value & 0xFFU);
+    frame->Data[word * 2U + 1U] = (uint8_t)(value >> 8);
+}
+
+static void ADC420_BuildFrame(CanTxMsg *frame, uint8_t phase)
+{
+    uint8_t i;
+    uint8_t first;
+    uint16_t id;
+    uint16_t value;
+    uint8_t *bytes = frame->Data;
+    for(i = 0U; i < 8U; i++) bytes[i] = 0U;
+
+    first = 0U;
+    switch(phase)
+    {
+    case 0U: id = CAN_ID_ADC420_HEARTBEAT; break;
+    case 1U: id = CAN_ID_ADC420_GROUP1; first = 0U; break;
+    case 2U: id = CAN_ID_ADC420_GROUP2; first = 4U; break;
+    case 3U: id = CAN_ID_ADC420_GROUP3; first = 8U; break;
+    case 4U: id = CAN_ID_ADC420_RAW1; first = 0U; break;
+    case 5U: id = CAN_ID_ADC420_RAW2; first = 4U; break;
+    case 6U: id = CAN_ID_ADC420_RAW3; first = 8U; break;
+    case 7U: id = CAN_ID_ADC420_STATUS1; break;
+    default: id = CAN_ID_ADC420_STATUS2; break;
+    }
+
+    frame->StdId = id;
+    frame->ExtId = 0U;
+    frame->IDE = CAN_Id_Standard;
+    frame->RTR = CAN_RTR_Data;
+    frame->DLC = 8U;
+
+    if(phase == 0U)
+    {
+        bytes[0] = 0xA5U;
+        bytes[1] = 0x5AU;
+        bytes[2] = adc420_scan_sequence;
+        bytes[3] = adc420_can_init_ok;
+        bytes[4] = (uint8_t)(adc420_last_can_esr & 0xFFU);
+        bytes[5] = (uint8_t)((adc420_last_can_esr >> 8) & 0xFFU);
+        bytes[6] = (uint8_t)(adc420_can_tx_error_count & 0xFFU);
+        bytes[7] = (uint8_t)(adc420_spi_error_count[0] + adc420_spi_error_count[1] + adc420_spi_error_count[2]);
+    }
+    else if(phase >= 1U && phase <= 6U)
+    {
+        for(i = 0U; i < 4U; i++)
+        {
+            if((uint8_t)(first + i) >= ADC420_CHANNEL_COUNT) continue;
+            value = (phase <= 3U) ? adc420_current_centi_ma[first + i] :
+                                    adc420_raw_samples[first + i];
+            ADC420_PackWord(frame, i, value);
+        }
+    }
+    else if(phase == 7U)
+    {
+        for(i = 0U; i < 8U; i++) bytes[i] = adc420_status[i];
+    }
+    else
+    {
+        bytes[0] = adc420_status[8];
+        bytes[1] = adc420_status[9];
+        bytes[2] = (uint8_t)adc420_spi_error_count[0];
+        bytes[3] = (uint8_t)adc420_spi_error_count[1];
+        bytes[4] = (uint8_t)adc420_spi_error_count[2];
+        bytes[5] = adc420_scan_sequence;
+        bytes[6] = (uint8_t)adc420_echo_mismatch_count[0];
+        bytes[7] = (uint8_t)adc420_echo_mismatch_count[2];
+    }
+}
+
+/* Call on every pass of main while(1), not from an ISR. */
+void ADC420_CommunicationsService(void)
+{
+    static uint32_t last_adc_ms = 0U;
+    static uint32_t last_tx_ms = 0U;
+    static uint32_t pending_since = 0U;
+    static uint8_t adc_index = 0U;
+    static uint8_t phase = 0U;
+    static uint8_t pending = 0U;
+    static uint8_t mailbox = 0U;
+    uint32_t now = task_tim1.time_1ms;
+    uint8_t status;
+    uint8_t chip;
+    uint8_t tx_state;
+    CanTxMsg frame;
+
+    adc420_can_service_count++;
+    adc420_last_can_esr = CAN1->ESR;
+    adc420_last_can_tsr = CAN1->TSR;
+
+    /* Poll asynchronous CAN mailbox, never wait for a slow SPI converter. */
+    if(pending)
+    {
+        tx_state = CAN_TransmitStatus(CAN1, mailbox);
+        if(tx_state == CAN_TxStatus_Ok)
+        {
+            adc420_can_tx_ok_count++;
+            pending = 0U;
+        }
+        else if(tx_state == CAN_TxStatus_Failed ||
+                (uint32_t)(now - pending_since) >= 15U)
+        {
+            CAN_CancelTransmit(CAN1, mailbox);
+            adc420_can_tx_error_count++;
+            pending = 0U;
+        }
+    }
+
+    if(adc420_can_init_ok && !pending &&
+       (phase == 0U || (uint32_t)(now - last_tx_ms) >= 10U))
+    {
+        ADC420_BuildFrame(&frame, phase);
+        mailbox = CAN_Transmit(CAN1, &frame);
+        if(mailbox != CAN_TxStatus_NoMailBox)
+        {
+            adc420_last_tx_id = frame.StdId;
+            adc420_can_submit_count++;
+            pending_since = now;
+            pending = 1U;
+            last_tx_ms = now;
+            phase++;
+            if(phase >= 9U) phase = 0U;
+        }
+        else
+        {
+            adc420_can_mailbox_busy_count++;
+        }
+    }
+
+    /* Independent single-channel scan; CAN heartbeat is sent immediately
+       even when ADC supplies, phototransistors or SPI are broken. */
+    if((uint32_t)(now - last_adc_ms) < 20U) return;
+    last_adc_ms = now;
+    chip = adc420_channel_map[adc_index].chip;
+    status = ADS1118_ReadChannelChecked_SPI1(
+        chip, adc420_channel_map[adc_index].channel,
+        &adc420_raw_samples[adc_index], &adc420_config_echo[adc_index]);
+    if(status == 0U)
+    {
+        adc420_spi_error_count[chip - 1U]++;
+        adc420_status[adc_index] = ADC420_STATUS_SPI_ERROR;
+        adc420_current_centi_ma[adc_index] = ADC420_CAN_INVALID_VALUE;
+        adc420_voltage_v[adc_index] = 0.0f;
+        adc420_current_ma[adc_index] = 0.0f;
+    }
+    else
+    {
+        adc420_current_centi_ma[adc_index] = ADC420_RawToCentiMa(
+            adc420_raw_samples[adc_index], &adc420_status[adc_index],
+            &adc420_voltage_v[adc_index], &adc420_current_ma[adc_index]);
+        if(status == 2U)
+        {
+            adc420_status[adc_index] = ADC420_STATUS_CONFIG_MISMATCH;
+            adc420_echo_mismatch_count[chip - 1U]++;
+        }
+    }
+    adc420_adc_service_count++;
+    adc_index++;
+    if(adc_index >= ADC420_CHANNEL_COUNT)
+    {
+        adc_index = 0U;
+        adc420_scan_sequence++;
     }
 }
 
@@ -1878,7 +2060,8 @@ void task_100ms(void) {
 
 // 200ms任务
 void task_200ms(void) {
-    ADC420_ScanAndSend();
+    /* ADC420 uses ADC420_CommunicationsService() in the foreground loop.
+       Do not run a blocking ten-channel scan here. */
 //     HTM440_Task();
     
     // 空任务

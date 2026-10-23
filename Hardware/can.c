@@ -7,7 +7,7 @@
 
 
 // 添加这些 extern 声明
-extern Task_Timer task_tim1;
+extern volatile Task_Timer task_tim1;
 extern CAN_Message can_rx_msg;
 extern uint32_t last_can_activity_time; // 需要将 func.c 中的 static 移除
 //////////////////////////////////////////////////////////////////////////////////	 
@@ -54,7 +54,10 @@ u8 CAN_Mode_Init(u8 tsjw,u8 tbs2,u8 tbs1,u16 brp,u8 mode)
 	NVIC_InitTypeDef  		NVIC_InitStructure;
 #endif
 
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);//使能PORTA时钟	                   											 
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_AFIO, ENABLE);//使能GPIOA/AFIO时钟
+    /* 本采集板 CAN1 实际连PA11(RX)、PA12(TX)，明确禁止CAN引脚重映射。 */
+    GPIO_PinRemapConfig(GPIO_Remap1_CAN1, DISABLE);
+    GPIO_PinRemapConfig(GPIO_Remap2_CAN1, DISABLE);	                   											 
 
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_CAN1, ENABLE);//使能CAN1时钟	
 
@@ -71,7 +74,7 @@ u8 CAN_Mode_Init(u8 tsjw,u8 tbs2,u8 tbs1,u16 brp,u8 mode)
 	CAN_InitStructure.CAN_TTCM=DISABLE;			//非时间触发通信模式  
 	CAN_InitStructure.CAN_ABOM=ENABLE;			//软件自动离线管理	 
 	CAN_InitStructure.CAN_AWUM=DISABLE;			//睡眠模式通过软件唤醒(清除CAN->MCR的SLEEP位)
-	CAN_InitStructure.CAN_NART=DISABLE;			//禁止报文自动传送 
+	CAN_InitStructure.CAN_NART=ENABLE;			//禁止报文自动传送 
 	CAN_InitStructure.CAN_RFLM=DISABLE;		 	//报文不锁定,新的覆盖旧的  
 	CAN_InitStructure.CAN_TXFP=DISABLE;			//优先级由报文标识符决定 
 	CAN_InitStructure.CAN_Mode= mode;	        //模式设置： mode:0,普通模式;1,回环模式; 
@@ -80,7 +83,8 @@ u8 CAN_Mode_Init(u8 tsjw,u8 tbs2,u8 tbs1,u16 brp,u8 mode)
 	CAN_InitStructure.CAN_BS1=tbs1; 			//Tbs1=tbs1+1个时间单位CAN_BS1_1tq ~CAN_BS1_16tq
 	CAN_InitStructure.CAN_BS2=tbs2;				//Tbs2=tbs2+1个时间单位CAN_BS2_1tq ~	CAN_BS2_8tq
 	CAN_InitStructure.CAN_Prescaler=brp;        //分频系数(Fdiv)为brp+1	
-	CAN_Init(CAN1, &CAN_InitStructure);        	//初始化CAN1 
+	if(CAN_Init(CAN1, &CAN_InitStructure) == CAN_InitStatus_Failed)
+        return 1U;  /* 初始化失败不再假装CAN已正常启动 */
 
 	
     // 配置过滤器0 - 接收所有标准ID消息
