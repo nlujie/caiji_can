@@ -5,7 +5,51 @@
 #include "serial.h"
 #include "delay.h"
 
-// Á¬Ðø¶ÁÈ¡Ä£Ê½ - ¸ü¸ßÐ§
+/* Hardware diagnostic counters, visible in Keil Watch. */
+volatile u32 ads1118_spi_timeout_count = 0;
+volatile u32 ads1118_conversion_count = 0;
+
+/* Single-shot transaction:
+ * 1. Write channel config (16 SCLK, CS high ends frame).
+ * 2. Wait > 1 conversion at 128 SPS.
+ * 3. Read conversion with 0x0000 dummy (NOP, leaves config unchanged).
+ * All ADCs are on SPI1; only chip-select differs.
+ */
+static u16 ADS1118_ReadOnSPI1(GPIO_TypeDef *cs_port, u16 cs_pin, u16 config)
+{
+    u8 hi, lo;
+    u32 remaining;
+    u32 failures = ads1118_spi_timeout_count;
+
+    GPIO_ResetBits(cs_port, cs_pin);
+    Delay_us(4);
+    (void)ADS1118_ReadWrite_SPI1((u8)(config >> 8));
+    (void)ADS1118_ReadWrite_SPI1((u8)config);
+    remaining = 100000U;
+    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY) == SET) {
+        if (--remaining == 0U) { ads1118_spi_timeout_count++; break; }
+    }
+    GPIO_SetBits(cs_port, cs_pin);
+    if (ads1118_spi_timeout_count != failures) return 0xFFFFU;
+
+    /* 128 SPS nominal conversion 7.8125 ms; allow oscillator tolerance. */
+    Delay_ms(10);
+    GPIO_ResetBits(cs_port, cs_pin);
+    Delay_us(4);
+    hi = ADS1118_ReadWrite_SPI1(0x00U);
+    lo = ADS1118_ReadWrite_SPI1(0x00U);
+    remaining = 100000U;
+    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_BSY) == SET) {
+        if (--remaining == 0U) { ads1118_spi_timeout_count++; break; }
+    }
+    GPIO_SetBits(cs_port, cs_pin);
+    if (ads1118_spi_timeout_count != failures) return 0xFFFFU;
+    ads1118_conversion_count++;
+    return (u16)(((u16)hi << 8) | lo);
+}
+
+
+// è¿žç»­è¯»å–æ¨¡å¼ - æ›´é«˜æ•ˆ
 //u16 ADS1118_ReadVotage_SPI1_Chip1(u16 ConfigReg)
 //{  
 //    static u16 last_config = 0;
@@ -16,18 +60,18 @@
 //    ADC_CS1_Low();
 //    Delay_us(2);
 //    
-//    // Èç¹ûÅäÖÃ¸Ä±ä£¬ÐèÒªÖØÐÂÆô¶¯×ª»»
+//    // å¦‚æžœé…ç½®æ”¹å˜ï¼Œéœ€è¦é‡æ–°å¯åŠ¨è½¬æ¢
 //    if (last_config != ConfigReg) {
-//        // ·¢ËÍÐÂÅäÖÃÆô¶¯×ª»»
+//        // å‘é€æ–°é…ç½®å¯åŠ¨è½¬æ¢
 //        (void)ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
 //        (void)ADS1118_ReadWrite_SPI1((u8)ConfigReg);
 //        last_config = ConfigReg;
 //        
-//        // µÈ´ýµÚÒ»´Î×ª»»Íê³É
+//        // ç­‰å¾…ç¬¬ä¸€æ¬¡è½¬æ¢å®Œæˆ
 //        Delay_ms(10);
 //    }
 //    
-//    // ¶ÁÈ¡µ±Ç°×ª»»½á¹û£¨Í¬Ê±Æô¶¯ÏÂÒ»´Î×ª»»£©
+//    // è¯»å–å½“å‰è½¬æ¢ç»“æžœï¼ˆåŒæ—¶å¯åŠ¨ä¸‹ä¸€æ¬¡è½¬æ¢ï¼‰
 //    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
 //    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
 //    tmp = ((u16)Hbyte << 8) | (u16)Lbyte;
@@ -38,67 +82,21 @@
 //    return tmp;
 //}
 
-// SPI1µÚÒ»¸öÐ¾Æ¬¶ÁÈ¡º¯Êý (PA4Æ¬Ñ¡)
+// SPI1ç¬¬ä¸€ä¸ªèŠ¯ç‰‡è¯»å–å‡½æ•° (PA4ç‰‡é€‰)
 u16 ADS1118_ReadVotage_SPI1_Chip1(u16 ConfigReg)
-{  
-    u8  Hbyte=0;
-    u8  Lbyte=0;
-    u16 tmp=0;
-
-    ADC_CS1_Low(); // À­µÍPA4Æ¬Ñ¡
-    Delay_us(8);
-    
-    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg>>8));
-    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-    
-    
-    
-    
-//    // ÖØÒª£ºµÈ´ý×ª»»Íê³É
-//    // ¶ÔÓÚ128SPS£¬µÈ´ý8ms£»¶ÔÓÚ475SPS£¬µÈ´ý2.1ms
-//    Delay_ms(10); // Ôö¼Ó×ã¹»µÄµÈ´ýÊ±¼ä
-//    
-//    // ÔÙ´Î¶ÁÈ¡»ñÈ¡×ª»»½á¹û
-//    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg>>8));
-//    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-  
-    
-    
-    
-    
-    
-    
-    tmp = ((u16)Hbyte<<8)|(u16)Lbyte;
-    
-    Delay_us(8);
-    ADC_CS1_High(); // À­¸ßPA4Æ¬Ñ¡
-    
-    return tmp;
+{
+    return ADS1118_ReadOnSPI1(GPIOB, GPIO_Pin_0, ConfigReg);
 }
 
-// SPI1µÚ¶þ¸öÐ¾Æ¬¶ÁÈ¡º¯Êý (PA8Æ¬Ñ¡)
+// SPI1ç¬¬äºŒä¸ªèŠ¯ç‰‡è¯»å–å‡½æ•° (PA8ç‰‡é€‰)
 u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg)
-{  
-    u8  Hbyte=0;
-    u8  Lbyte=0;
-    u16 tmp=0;
-
-    ADC_CS2_Low(); // À­µÍPA8Æ¬Ñ¡
-    Delay_us(8);
-    
-    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg>>8));
-    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-    tmp = ((u16)Hbyte<<8)|(u16)Lbyte;
-    
-    Delay_us(8);
-    ADC_CS2_High(); // À­¸ßPA8Æ¬Ñ¡
-    
-    return tmp;
+{
+    return ADS1118_ReadOnSPI1(GPIOB, GPIO_Pin_1, ConfigReg);
 }
 
 
 
-//// Á¬Ðø×ª»»Ä£Ê½ÏÂµÄÓÅ»¯¶ÁÈ¡º¯Êý
+//// è¿žç»­è½¬æ¢æ¨¡å¼ä¸‹çš„ä¼˜åŒ–è¯»å–å‡½æ•°
 //u16 ADS1118_ReadVotage_SPI1_Chip1(u16 ConfigReg)
 //{  
 //    static u16 last_config = 0;
@@ -108,25 +106,25 @@ u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg)
 //    ADC_CS1_Low();
 //    Delay_us(10);
 //    
-//    // ¼ì²éÊÇ·ñÐèÒªÇÐ»»Í¨µÀ
+//    // æ£€æŸ¥æ˜¯å¦éœ€è¦åˆ‡æ¢é€šé“
 //    if (last_config != ConfigReg) {
-//        // Í¨µÀÇÐ»»£¬ÐèÒª·¢ËÍÐÂÅäÖÃ
+//        // é€šé“åˆ‡æ¢ï¼Œéœ€è¦å‘é€æ–°é…ç½®
 //        (void)ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
 //        (void)ADS1118_ReadWrite_SPI1((u8)ConfigReg);
 //        last_config = ConfigReg;
 //        
-//        // ÔÚÁ¬ÐøÄ£Ê½ÏÂ£¬ÇÐ»»Í¨µÀºóÐèÒª¶ªÆúµÚÒ»¸ö¶ÁÊý
+//        // åœ¨è¿žç»­æ¨¡å¼ä¸‹ï¼Œåˆ‡æ¢é€šé“åŽéœ€è¦ä¸¢å¼ƒç¬¬ä¸€ä¸ªè¯»æ•°
 //        ADC_CS1_High();
-//        Delay_ms(10);  // µÈ´ýÐÂÍ¨µÀÎÈ¶¨
+//        Delay_ms(10);  // ç­‰å¾…æ–°é€šé“ç¨³å®š
 //        ADC_CS1_Low();
 //        Delay_us(10);
 //        
-//        // ¶ÁÈ¡²¢¶ªÆúµÚÒ»¸öÊý¾Ý
+//        // è¯»å–å¹¶ä¸¢å¼ƒç¬¬ä¸€ä¸ªæ•°æ®
 //        (void)ADS1118_ReadWrite_SPI1(0xFF);
 //        (void)ADS1118_ReadWrite_SPI1(0xFF);
 //    }
 //    
-//    // ¶ÁÈ¡µ±Ç°×ª»»½á¹û
+//    // è¯»å–å½“å‰è½¬æ¢ç»“æžœ
 //    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
 //    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
 //    tmp = ((u16)Hbyte << 8) | (u16)Lbyte;
@@ -137,7 +135,7 @@ u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg)
 //    return tmp;
 //}
 
-//// SPI1µÚ¶þ¸öÐ¾Æ¬¶ÁÈ¡º¯Êý (PA8Æ¬Ñ¡) - Í¬ÑùÓÅ»¯
+//// SPI1ç¬¬äºŒä¸ªèŠ¯ç‰‡è¯»å–å‡½æ•° (PA8ç‰‡é€‰) - åŒæ ·ä¼˜åŒ–
 //u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg)
 //{  
 //    static u16 last_config = 0;
@@ -147,25 +145,25 @@ u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg)
 //    ADC_CS2_Low();
 //    Delay_us(10);
 //    
-//    // ¼ì²éÊÇ·ñÐèÒªÇÐ»»Í¨µÀ
+//    // æ£€æŸ¥æ˜¯å¦éœ€è¦åˆ‡æ¢é€šé“
 //    if (last_config != ConfigReg) {
-//        // Í¨µÀÇÐ»»£¬ÐèÒª·¢ËÍÐÂÅäÖÃ
+//        // é€šé“åˆ‡æ¢ï¼Œéœ€è¦å‘é€æ–°é…ç½®
 //        (void)ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
 //        (void)ADS1118_ReadWrite_SPI1((u8)ConfigReg);
 //        last_config = ConfigReg;
 //        
-//        // ÔÚÁ¬ÐøÄ£Ê½ÏÂ£¬ÇÐ»»Í¨µÀºóÐèÒª¶ªÆúµÚÒ»¸ö¶ÁÊý
+//        // åœ¨è¿žç»­æ¨¡å¼ä¸‹ï¼Œåˆ‡æ¢é€šé“åŽéœ€è¦ä¸¢å¼ƒç¬¬ä¸€ä¸ªè¯»æ•°
 //        ADC_CS2_High();
-//        Delay_ms(10);  // µÈ´ýÐÂÍ¨µÀÎÈ¶¨
+//        Delay_ms(10);  // ç­‰å¾…æ–°é€šé“ç¨³å®š
 //        ADC_CS2_Low();
 //        Delay_us(10);
 //        
-//        // ¶ÁÈ¡²¢¶ªÆúµÚÒ»¸öÊý¾Ý
+//        // è¯»å–å¹¶ä¸¢å¼ƒç¬¬ä¸€ä¸ªæ•°æ®
 //        (void)ADS1118_ReadWrite_SPI1(0xFF);
 //        (void)ADS1118_ReadWrite_SPI1(0xFF);
 //    }
 //    
-//    // ¶ÁÈ¡µ±Ç°×ª»»½á¹û
+//    // è¯»å–å½“å‰è½¬æ¢ç»“æžœ
 //    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
 //    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
 //    tmp = ((u16)Hbyte << 8) | (u16)Lbyte;
@@ -178,52 +176,13 @@ u16 ADS1118_ReadVotage_SPI1_Chip2(u16 ConfigReg)
 
 
 
-//// ÓÅ»¯µÄµ¥´Î¶ÁÈ¡º¯Êý - È·±£Ã¿´Î¶ÁÈ¡¶¼ÊÇÕýÈ·µÄÊý¾Ý
+//// ä¼˜åŒ–çš„å•æ¬¡è¯»å–å‡½æ•° - ç¡®ä¿æ¯æ¬¡è¯»å–éƒ½æ˜¯æ­£ç¡®çš„æ•°æ®
 u16 ADS1118_ReadVotage_SPI1_Chip1_Optimized(u16 ConfigReg)
-{  
-    static u16 last_config = 0;
-    u8 Hbyte, Lbyte;
-    u16 tmp;
-
-    ADC_CS1_Low();
-    Delay_us(15);  // Ôö¼ÓÆ¬Ñ¡½¨Á¢Ê±¼ä
-    
-    // ¼ì²éÊÇ·ñÐèÒªÇÐ»»Í¨µÀ
-    if ((last_config & 0x7000) != (ConfigReg & 0x7000)) {
-        // Í¨µÀÇÐ»»£¬ÐèÒªÖØÐÂÅäÖÃ
-        (void)ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-        (void)ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-        last_config = ConfigReg;
-        
-        // Í¨µÀÇÐ»»ºóÐèÒª¸ü³¤µÄÎÈ¶¨Ê±¼ä
-        ADC_CS1_High();
-        Delay_ms(15);  // Ôö¼ÓÎÈ¶¨Ê±¼ä
-        ADC_CS1_Low();
-        Delay_us(15);
-        
-        // ¶ÁÈ¡²¢¶ªÆúµÚÒ»¸öÊý¾Ý£¨È·±£ÊÇµ±Ç°Í¨µÀµÄÊý¾Ý£©
-        (void)ADS1118_ReadWrite_SPI1(0xFF);
-        (void)ADS1118_ReadWrite_SPI1(0xFF);
-        
-        // ÔÙµÈ´ýÒ»´Î×ª»»ÖÜÆÚ
-        ADC_CS1_High();
-        Delay_ms(8);   // 128SPS×ª»»Ê±¼ä
-        ADC_CS1_Low();
-        Delay_us(15);
-    }
-    
-    // ¶ÁÈ¡µ±Ç°×ª»»½á¹û
-    Hbyte = ADS1118_ReadWrite_SPI1((u8)(ConfigReg >> 8));
-    Lbyte = ADS1118_ReadWrite_SPI1((u8)ConfigReg);
-    tmp = ((u16)Hbyte << 8) | (u16)Lbyte;
-    
-    Delay_us(10);
-    ADC_CS1_High();
-    
-    return tmp;
+{
+    return ADS1118_ReadVotage_SPI1_Chip1(ConfigReg);
 }
 
-//// Í¬ÑùµÄÓÅ»¯Ó¦ÓÃÓÚµÚ¶þ¸öÐ¾Æ¬
+//// åŒæ ·çš„ä¼˜åŒ–åº”ç”¨äºŽç¬¬äºŒä¸ªèŠ¯ç‰‡
 //u16 ADS1118_ReadVotage_SPI1_Chip2_Optimized(u16 ConfigReg)
 //{  
 //    static u16 last_config = 0;
@@ -265,50 +224,40 @@ u16 ADS1118_ReadVotage_SPI1_Chip1_Optimized(u16 ConfigReg)
 
 
 
-// ¾ÉµÄSPI1¶ÁÈ¡º¯Êý£¨ÎªÁË¼æÈÝÐÔ±£Áô£©
+// æ—§çš„SPI1è¯»å–å‡½æ•°ï¼ˆä¸ºäº†å…¼å®¹æ€§ä¿ç•™ï¼‰
 u16 ADS1118_ReadVotage_SPI1(u16 ConfigReg)
 {  
-    return ADS1118_ReadVotage_SPI1_Chip1(ConfigReg); // Ä¬ÈÏÊ¹ÓÃµÚÒ»¸öÐ¾Æ¬
+    return ADS1118_ReadVotage_SPI1_Chip1(ConfigReg); // é»˜è®¤ä½¿ç”¨ç¬¬ä¸€ä¸ªèŠ¯ç‰‡
 }
 
 void SPI1_Init(void)
-{	
-    GPIO_InitTypeDef GPIO_InitStructure;
-    SPI_InitTypeDef SPI_InitStructure;
-    
-    // ¿ªÆô GPIOA ºÍ SPI1 Ê±ÖÓ
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1, ENABLE);
-    
-    // ÅäÖÃ SPI1 Òý½Å£ºPA5-SCK, PA6-MISO, PA7-MOSI
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5|GPIO_Pin_6|GPIO_Pin_7;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP; // ¸´ÓÃÍÆÍì
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
-    
-    GPIO_SetBits(GPIOA,GPIO_Pin_5|GPIO_Pin_6|GPIO_Pin_7);  // À­¸ßÄ¬ÈÏµçÆ½
-    
-    // SPI1 ²ÎÊýÅäÖÃ
-    SPI_InitStructure.SPI_Direction = SPI_Direction_2Lines_FullDuplex;// È«Ë«¹¤
-    SPI_InitStructure.SPI_Mode = SPI_Mode_Master;// Ö÷»úÄ£Ê½
-    SPI_InitStructure.SPI_DataSize = SPI_DataSize_8b;// 8Î»Êý¾Ý¿í¶È
-    SPI_InitStructure.SPI_CPOL = SPI_CPOL_Low;// ¿ÕÏÐÊ±ÖÓµÍµçÆ½
-    SPI_InitStructure.SPI_CPHA = SPI_CPHA_2Edge;// µÚ¶þ¸ö±ßÑØ²ÉÑù
-    SPI_InitStructure.SPI_NSS = SPI_NSS_Soft;// Èí¼þ¹ÜÀíÆ¬Ñ¡
-    SPI_InitStructure.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_8;// ·ÖÆµ
-    SPI_InitStructure.SPI_FirstBit = SPI_FirstBit_MSB;// ¸ßÎ»ÏÈ·¢
-    SPI_InitStructure.SPI_CRCPolynomial = 7;
-    SPI_Init(SPI1, &SPI_InitStructure);
- 
-    SPI_Cmd(SPI1, ENABLE);// Ê¹ÄÜ SPI1
-    
-    // Æô¶¯Ò»´Î´«Êä£¬ÈÃ ADS1118 ¿ªÊ¼¹¤×÷ - Ê¹ÓÃÐÂµÄ2.048VÁ¿³ÌÅäÖÃ
-    ADS1118_ReadVotage_SPI1_Chip1(ADS1118_CONFIG_AIN2);//Æô¶¯´«Êä
-    Delay_ms(8); // µÈ´ý×ª»»Íê³É
-//    
-    // Ìí¼ÓµÚ¶þ¸öÐ¾Æ¬µÄÆô¶¯´«Êä
-    ADS1118_ReadVotage_SPI1_Chip2(ADS1118_CONFIG_AIN2);
-    Delay_ms(8); // µÈ´ý×ª»»Íê³É
+{
+    GPIO_InitTypeDef gpio;
+    SPI_InitTypeDef spi;
+
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_SPI1, ENABLE);
+
+    /* STM32F103 SPI1 pins: PA5=SCK, PA6=MISO (INPUT), PA7=MOSI. */
+    gpio.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_7;
+    gpio.GPIO_Mode = GPIO_Mode_AF_PP;
+    gpio.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOA, &gpio);
+    gpio.GPIO_Pin = GPIO_Pin_6;
+    gpio.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+    GPIO_Init(GPIOA, &gpio);
+
+    SPI_I2S_DeInit(SPI1);
+    SPI_StructInit(&spi);
+    spi.SPI_Direction = SPI_Direction_2Lines_FullDuplex;
+    spi.SPI_Mode = SPI_Mode_Master;
+    spi.SPI_DataSize = SPI_DataSize_8b;
+    spi.SPI_CPOL = SPI_CPOL_Low;
+    spi.SPI_CPHA = SPI_CPHA_2Edge; /* ADS1118 SPI mode 1 */
+    spi.SPI_NSS = SPI_NSS_Soft;
+    spi.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32; /* 72MHz/32 = 2.25MHz */
+    spi.SPI_FirstBit = SPI_FirstBit_MSB;
+    SPI_Init(SPI1, &spi);
+    SPI_Cmd(SPI1, ENABLE);
 }
 
 void SPI2_Init(void)
@@ -316,19 +265,19 @@ void SPI2_Init(void)
     GPIO_InitTypeDef GPIO_InitStructure;
     SPI_InitTypeDef SPI_InitStructure;
     
-    // ¿ªÆô GPIOB ºÍ SPI2 Ê±ÖÓ
+    // å¼€å¯ GPIOB å’Œ SPI2 æ—¶é’Ÿ
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI2, ENABLE);
     
-    // SPI2Òý½Å: PB13-SCK, PB14-MISO, PB15-MOSI
+    // SPI2å¼•è„š: PB13-SCK, PB14-MISO, PB15-MOSI
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13|GPIO_Pin_14|GPIO_Pin_15;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;// ¸´ÓÃÍÆÍì
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;// å¤ç”¨æŽ¨æŒ½
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
     
     GPIO_SetBits(GPIOB, GPIO_Pin_13|GPIO_Pin_14|GPIO_Pin_15);
     
-    // SPI2 ²ÎÊýÅäÖÃ£¨Óë SPI1 ÏàÍ¬£©
+    // SPI2 å‚æ•°é…ç½®ï¼ˆä¸Ž SPI1 ç›¸åŒï¼‰
     SPI_InitStructure.SPI_Direction = SPI_Direction_2Lines_FullDuplex;
     SPI_InitStructure.SPI_Mode = SPI_Mode_Master;
     SPI_InitStructure.SPI_DataSize = SPI_DataSize_8b;
@@ -342,49 +291,35 @@ void SPI2_Init(void)
  
     SPI_Cmd(SPI2, ENABLE);
     
-    // Ê¹ÓÃÐÂµÄ2.048VÁ¿³ÌÅäÖÃ
-    ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN2);//Æô¶¯´«Êä
+    // ä½¿ç”¨æ–°çš„2.048Vé‡ç¨‹é…ç½®
+    ADS1118_ReadVotage_SPI2(ADS1118_CONFIG_AIN2);//å¯åŠ¨ä¼ è¾“
     Delay_ms(8);
 }
 
 void ADS1118_Init(void)
-{	
-    GPIO_InitTypeDef GPIO_InitStructure;
-    
-    // ³õÊ¼»¯SPI1µÄÁ½¸öCSÒý½Å (PA4ºÍPA8)
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-    
-    // SPI1µÄµÚÒ»¸öCS (PA4)
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
-    ADC_CS1_High();
-    
-    // SPI1µÄµÚ¶þ¸öCS (PA8)
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
-    ADC_CS2_High();
-    
-    // ³õÊ¼»¯SPI2µÄCSÒý½Å (PB12)
+{
+    GPIO_InitTypeDef gpio;
+
+    /* Actual schematic chip selects: PB0=N_O1, PB1=N_O2, PB10=N_O3. */
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
-    GPIO_Init(GPIOB, &GPIO_InitStructure);
+    GPIO_SetBits(GPIOB, GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_10);
+    gpio.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_10;
+    gpio.GPIO_Mode = GPIO_Mode_Out_PP;
+    gpio.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOB, &gpio);
+    ADC_CS1_High();
+    ADC_CS2_High();
     ADC_CS3_High();
- 
-    // ³õÊ¼»¯Á½¸ö SPI
+
+    /* PCB has three SPI1 ADS1118s, not an ADS1118 on SPI2. */
     SPI1_Init();
-    SPI2_Init();
-    
-    // ÉèÖÃËÙÂÊ
-    SPI1_SetSpeed(SPI_BaudRatePrescaler_8);
-    SPI2_SetSpeed(SPI_BaudRatePrescaler_8);
+    Delay_ms(2);
 }
 
 void SPI1_SetSpeed(u8 SPI_BaudRatePrescaler)
 {
     assert_param(IS_SPI_BAUDRATE_PRESCALER(SPI_BaudRatePrescaler));
-    SPI1->CR1 &= 0XFFC7;  // Çå³ý·ÖÆµÎ»
+    SPI1->CR1 &= 0XFFC7;  // æ¸…é™¤åˆ†é¢‘ä½
     SPI1->CR1 |= SPI_BaudRatePrescaler;
     SPI_Cmd(SPI1,ENABLE); 
 }
@@ -397,26 +332,18 @@ void SPI2_SetSpeed(u8 SPI_BaudRatePrescaler)
     SPI_Cmd(SPI2,ENABLE); 
 }
 
-u8 ADS1118_ReadWrite_SPI1(u8 ConfigReg1)
+u8 ADS1118_ReadWrite_SPI1(u8 byte_out)
 {
-    u8 retry=0;
-    // µÈ´ý·¢ËÍ»º³åÇø¿Õ
-    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET)
-    {
-        retry++;
-        if(retry>200)return 0;
-    }																														
-    
-    SPI_I2S_SendData(SPI1, ConfigReg1);  // ·¢ËÍ1×Ö½Ú
-    
-    // µÈ´ý½ÓÊÕÍê³É
-    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_RXNE) == RESET)
-    {
-        retry++;
-        if(retry>200)return 0;
-    }	
-    
-    return SPI_I2S_ReceiveData(SPI1);// ¶ÁÈ¡½ÓÊÕµ½µÄÊý¾Ý
+    u32 timeout = 100000U;
+    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET) {
+        if (--timeout == 0U) { ads1118_spi_timeout_count++; return 0U; }
+    }
+    SPI_I2S_SendData(SPI1, byte_out);
+    timeout = 100000U;
+    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_RXNE) == RESET) {
+        if (--timeout == 0U) { ads1118_spi_timeout_count++; return 0U; }
+    }
+    return (u8)SPI_I2S_ReceiveData(SPI1);
 }
 
 u8 ADS1118_ReadWrite_SPI2(u8 ConfigReg1)
@@ -439,23 +366,15 @@ u8 ADS1118_ReadWrite_SPI2(u8 ConfigReg1)
     return SPI_I2S_ReceiveData(SPI2);
 }
 
-// SPI2Ð¾Æ¬¶ÁÈ¡º¯Êý
+// SPI2èŠ¯ç‰‡è¯»å–å‡½æ•°
 u16 ADS1118_ReadVotage_SPI2(u16 ConfigReg)
-{  
-    u8  Hbyte=0;
-    u8  Lbyte=0;
-    u16 tmp=0;
+{
+    /* Compatibility with legacy callers: third ADS1118 uses SPI1 and PB10. */
+    return ADS1118_ReadOnSPI1(GPIOB, GPIO_Pin_10, ConfigReg);
+}
 
-    ADC_CS3_Low();
-    Delay_us(2);
-    
-    Hbyte = ADS1118_ReadWrite_SPI2((u8)(ConfigReg>>8));
-    Lbyte = ADS1118_ReadWrite_SPI2((u8)ConfigReg);
-    tmp = ((u16)Hbyte<<8)|(u16)Lbyte;
-    
-    Delay_us(2);
-    ADC_CS3_High();
-
-    return tmp;
+u16 ADS1118_ReadVotage_SPI1_Chip2_Optimized(u16 ConfigReg)
+{
+    return ADS1118_ReadVotage_SPI1_Chip2(ConfigReg);
 }
 
