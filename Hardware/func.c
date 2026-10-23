@@ -13,7 +13,7 @@
 #include "modbus_rtu_master.h"
 
 // 全局变量定义
-Task_Timer task_tim1 = {0};
+volatile Task_Timer task_tim1 = {0};
 CAN_Message can_rx_msg = {0, 0, 0, 0, {0}};
 
 /* 外部4-20mA通道：数组下标0..9依次对应ADC_2..ADC_11。 */
@@ -1432,7 +1432,7 @@ void Read_ADS1118_Direct(void) {
         float resistance3 = CalculateNTCResistance(voltage_v);
         spi1_chip2_ain3_temp = CalculateNTCTemperature(resistance3);
         
-        Serial_SendString_2("AIN3:  T5： ");
+        Serial_SendString_2("AIN3: T5: ");
         Serial_SendFloat(spi1_chip2_ain3_temp, 1);
         Serial_SendString_2("C(ADC:");
         Serial_SendNumber_2(filtered_adc_spi1_chip2_ain3);
@@ -1693,7 +1693,7 @@ void Read_ADS1118_Direct(void) {
         float resistance4 = CalculateNTCResistance(voltage_v);
         spi2_ain3_temp = CalculateNTCTemperature(resistance4);
         
-        Serial_SendString_2("AIN3:  T4： ");
+        Serial_SendString_2("AIN3: T4: ");
         Serial_SendFloat(spi2_ain3_temp, 1);
         Serial_SendString_2("C(ADC:");
         Serial_SendNumber_2(filtered_adc_spi2_ain3);

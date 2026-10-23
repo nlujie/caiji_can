@@ -71,7 +71,7 @@ typedef struct {
 } Chip_Config_t;
 
 // 声明全局变量
-extern Task_Timer task_tim1;
+extern volatile Task_Timer task_tim1;
 extern CAN_Message can_rx_msg;
 extern uint16_t adc420_raw_samples[ADC420_CHANNEL_COUNT];
 extern uint16_t adc420_current_centi_ma[ADC420_CHANNEL_COUNT];
@@ -84,7 +84,18 @@ extern uint32_t adc420_can_tx_ok_count;
 extern uint32_t adc420_can_tx_error_count;
 extern uint32_t adc420_echo_mismatch_count[3];
 extern uint8_t adc420_scan_sequence;
+
+/* CAN and ADC are serviced separately in the foreground main loop. */
 void ADC420_ScanAndSend(void);
+void ADC420_CommunicationsService(void);
+extern volatile uint8_t adc420_can_init_ok;
+extern volatile uint32_t adc420_can_service_count;
+extern volatile uint32_t adc420_adc_service_count;
+extern volatile uint32_t adc420_last_can_esr;
+extern volatile uint32_t adc420_last_can_tsr;
+extern volatile uint32_t adc420_last_tx_id;
+extern volatile uint32_t adc420_can_mailbox_busy_count;
+extern volatile uint32_t adc420_can_submit_count;
 
 // SPI1第一个芯片 (PA4片选) - 全局变量
 extern float spi1_chip1_ain0_current;
@@ -152,6 +163,7 @@ extern uint16_t filtered_adc_spi2_ain3;
 #define CAN_ID_ADC420_RAW3     0x132 /* 原码ADC_10..11, 0, 0 */
 #define CAN_ID_ADC420_STATUS1  0x133 /* 单字节状态ADC_2..9 */
 #define CAN_ID_ADC420_STATUS2  0x134 /* ADC_10/11状态和SPI错误计数、序号 */
+#define CAN_ID_ADC420_HEARTBEAT 0x135 /* independent heartbeat: A5 5A */
 #define ADC420_CAN_INVALID_VALUE 0xFFFF
 
 
