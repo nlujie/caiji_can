@@ -38,30 +38,31 @@ static void select_chip(ADC420_Chip chip)
     else if (chip == ADC420_O2) ADC420_CS_O2_LOW();
     else ADC420_CS_O3_LOW();
 }
-static uint8_t spi1_transfer(uint8_t data)
+static uint8_t spi_transfer(SPI_TypeDef *spi, uint8_t data)
 {
     uint32_t timeout = 100000U;
-    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_TXE) == RESET && timeout--) { }
+    while (SPI_I2S_GetFlagStatus(spi, SPI_I2S_FLAG_TXE) == RESET && timeout--) { }
     if (timeout == 0U) return 0U;
-    SPI_I2S_SendData(SPI1, data);
+    SPI_I2S_SendData(spi, data);
     timeout = 100000U;
-    while (SPI_I2S_GetFlagStatus(SPI1, SPI_I2S_FLAG_RXNE) == RESET && timeout--) { }
+    while (SPI_I2S_GetFlagStatus(spi, SPI_I2S_FLAG_RXNE) == RESET && timeout--) { }
     if (timeout == 0U) return 0U;
-    return (uint8_t)SPI_I2S_ReceiveData(SPI1);
+    return (uint8_t)SPI_I2S_ReceiveData(spi);
 }
 static uint16_t ads1118_read(ADC420_Chip chip, uint8_t channel)
 {
     uint16_t config;
     uint8_t hi, lo;
     int16_t signed_raw;
+    SPI_TypeDef *spi = (chip == ADC420_O3) ? SPI2 : SPI1;
 
     /* OS=1 single-shot; MUX=AINx-to-GND; PGA=+/-2.048V;
        DR=128SPS. Config base 0xC4EB matches the existing board driver. */
     config = (uint16_t)(0xC5EBU | ((uint16_t)(channel & 0x03U) << 12));
     select_chip(chip);
     wait_cycles(80U);
-    (void)spi1_transfer((uint8_t)(config >> 8));
-    (void)spi1_transfer((uint8_t)config);
+    (void)spi_transfer(spi, (uint8_t)(config >> 8));
+    (void)spi_transfer(spi, (uint8_t)config);
     all_cs_high();
 
     /* 128SPS conversion needs up to 7.8ms; leave margin. */
@@ -102,6 +103,7 @@ void ADC420_Init(void)
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB |
                            RCC_APB2Periph_AFIO, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1, ENABLE);
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI2, ENABLE);
 
     /* SPI1: PA5=SCK, PA6=MISO, PA7=MOSI. */
     gpio.GPIO_Pin = GPIO_Pin_5 | GPIO_Pin_7;
@@ -112,8 +114,8 @@ void ADC420_Init(void)
     gpio.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(GPIOA, &gpio);
 
-    /* Three board chip selects: N_O1=PB0, N_O2=PB1, N_O3=PB10.
-       All are active-low; de-select every chip before selecting one. */
+    /* Three board chip selects: N_O1=PB0 (SPI1), N_O2=PB1 (SPI1),
+       N_O3=PB10 (SPI2). All are active-low; only one chip selected at a time. */
     gpio.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_10;
     gpio.GPIO_Mode = GPIO_Mode_Out_PP;
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
@@ -132,6 +134,16 @@ void ADC420_Init(void)
     spi.SPI_CRCPolynomial = 7;
     SPI_Init(SPI1, &spi);
     SPI_Cmd(SPI1, ENABLE);
+
+    /* N_O3 ADC is wired to SPI2: PB13=SCK, PB14=MISO, PB15=MOSI. */
+    gpio.GPIO_Pin = GPIO_Pin_13 | GPIO_Pin_15;
+    gpio.GPIO_Mode = GPIO_Mode_AF_PP;
+    GPIO_Init(GPIOB, &gpio);
+    gpio.GPIO_Pin = GPIO_Pin_14;
+    gpio.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+    GPIO_Init(GPIOB, &gpio);
+    SPI_Init(SPI2, &spi);
+    SPI_Cmd(SPI2, ENABLE);
 }
 
 void ADC420_ScanAll(uint16_t current_centi_ma[ADC420_CHANNEL_COUNT])
