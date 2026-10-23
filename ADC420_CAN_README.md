@@ -57,3 +57,15 @@ time is about 2 ms per channel, the overall sample-and-send period is roughly
 
 CAN must be connected through the board's CAN transceiver to a CAN adapter/host
 configured for 500 kbit/s. Check the adapter's termination and common ground.
+
+
+## UART debug output
+
+The latest version prints diagnostic text through USART1 TX on PA9 at 115200 baud,
+8-N-1. Connect PA9 to the USB-UART adapter RX and connect grounds together. The
+adapter TX is not required. Do not connect a 5 V UART signal directly to an STM32
+input.
+
+Each scan prints all ADC_2..ADC_11 raw counts, voltage, current, and channel validity.
+Each CAN transmit attempt prints the standard ID, DLC, all eight data bytes, and
+the result (OK/FAIL). If no frames are sent, the UART prints the reason.

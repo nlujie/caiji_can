@@ -1,5 +1,7 @@
 #include "stm32f10x.h"
 #include "system_stm32f10x.h"
+#include "debug_uart.h"
+#include "system_stm32f10x.h"
 #include "Delay.h"
 #include "ads1118_spi.h"
 #include "can.h"
@@ -22,25 +24,32 @@ int main(void)
     SystemInit();
     SystemCoreClockUpdate();
 
+    DebugUart_Init();
+    DebugUart_Printf("\r\n[BOOT] STM32F103C8T6 ADC420/CAN debug started\r\n");
+    DebugUart_Printf("[BOOT] USART1 TX=PA9, baud=115200, 8N1\r\n");
+
     ADS1118_Init();
     ADC420_Init();
     can_ok = CAN_Module_Init();
 
+    DebugUart_Printf("[BOOT] ADS1118 SPI ready=%u, CAN init=%u\r\n",
+                     (unsigned int)ads1118_spi_ready,
+                     (unsigned int)can_ok);
+    DebugUart_Printf("[BOOT] CAN baud=500 kbps, IDs=0x301..0x305\r\n");
+
     while (1)
     {
-        /*
-         * A complete scan takes approximately 20-25 ms because each ADS1118
-         * conversion is allowed 2 ms to finish. With the delay below, the
-         * full scan-and-send cycle is approximately 100 ms.
-         */
-        if (ADC420_ScanAll() != 0U)
-        {
-            if (can_ok != 0U)
-            {
-                (void)ADC420_SendCanFrames();
-            }
-        }
+        (void)ADC420_ScanAll();
+        ADC420_DebugPrintReadings();
 
+        /*
+         * ADC420_SendCanFrames prints an explicit SKIP message when the ADC
+         * scan failed or CAN was not initialized. Successful/failed frame
+         * attempts are printed with the exact eight-byte payload.
+         */
+        (void)ADC420_SendCanFrames();
+
+        /* UART diagnostics add time; effective cycle rate is below 10 Hz. */
         Delay_ms(80U);
     }
 }

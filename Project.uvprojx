@@ -672,7 +672,7 @@
             </File>
           </Files>
         </Group>
-                        <Group>
+                                <Group>
           <GroupName>Hardware</GroupName>
           <Files>
             <File>
@@ -704,6 +704,16 @@
               <FileName>adc420_app.h</FileName>
               <FileType>5</FileType>
               <FilePath>.\Hardware\adc420_app.h</FilePath>
+            </File>
+            <File>
+              <FileName>debug_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Hardware\debug_uart.c</FilePath>
+            </File>
+            <File>
+              <FileName>debug_uart.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Hardware\debug_uart.h</FilePath>
             </File>
           </Files>
         </Group>

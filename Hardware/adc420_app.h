@@ -33,6 +33,7 @@ extern volatile uint8_t  adc420_last_channel;
 
 void ADC420_Init(void);
 uint8_t ADC420_ScanAll(void);
+void ADC420_DebugPrintReadings(void);
 uint8_t ADC420_SendCanFrames(void);
 
 #endif
