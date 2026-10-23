@@ -1,71 +1,72 @@
-# STM32F103C8T6: 10-channel 4-20 mA ADC acquisition over CAN
+# STM32F103C8T6: 10-channel ADS1118 raw ADC data over CAN
 
-## Hardware and scan mapping
+## Hardware and ADC channel mapping
 
-The three ADS1118 devices share SPI1. All chip selects are active-low and only one
-chip is selected at a time.
+Three ADS1118 devices share SPI1. All chip-select signals are active-low and only
+one ADS1118 is selected at a time.
 
 - SPI1: PA5=SCK, PA6=MISO/DOUT, PA7=MOSI/DIN
-- N_O1: PB0, channels AIN0..AIN3 -> ADC_4, ADC_5, ADC_7, ADC_6
-- N_O2: PB1, channels AIN2..AIN3 -> ADC_2, ADC_3
-- N_O3: PB10, channels AIN0..AIN3 -> ADC_11, ADC_9, ADC_8, ADC_10
-- CAN1: PA12=TX, PA11=RX, 500 kbit/s (assuming PCLK1=36 MHz)
+- N_O1: PB0, AIN0..AIN3 -> ADC_4, ADC_5, ADC_7, ADC_6
+- N_O2: PB1, AIN2..AIN3 -> ADC_2, ADC_3
+- N_O3: PB10, AIN0..AIN3 -> ADC_11, ADC_9, ADC_8, ADC_10
+- CAN1: PA12=TX, PA11=RX, 500 kbit/s when APB1=36 MHz
+- UART debug: USART1 TX on PA9, 115200 baud, 8-N-1
 
-The 10 current inputs use 100 ohm shunts, so 4-20 mA corresponds to 0.4-2.0 V.
-ADC PGA is +/-2.048 V. Voltage is calculated as raw * 0.0000625 V and current
-as voltage * 10 mA/V. Readings are not clipped to 4-20 mA.
+The ten ADC channels continue to be scanned by the existing ADS1118 driver.
+The UART diagnostic output still prints raw counts, voltage, current, channel
+validity, CAN payload bytes and CAN transmit status. CAN payloads now contain
+raw ADC counts only; current values are not sent over CAN.
 
-## CAN frame allocation
+## CAN message allocation
 
-Five standard 8-byte data frames are sent after each successful full scan.
-IDs are hexadecimal. All 16-bit fields are little-endian two's-complement values.
+All messages are standard 11-bit CAN data frames. Each raw ADC sample occupies
+exactly two bytes, encoded as a signed 16-bit ADS1118 result in little-endian
+order (least-significant byte first).
 
-| CAN ID | First channel | Second channel |
-|---|---|---|
-| 0x301 | ADC_2 | ADC_3 |
-| 0x302 | ADC_4 | ADC_5 |
-| 0x303 | ADC_6 | ADC_7 |
-| 0x304 | ADC_8 | ADC_9 |
-| 0x305 | ADC_10 | ADC_11 |
+| CAN ID | DLC | Byte offsets | Raw ADC channel order |
+|---|---:|---|---|
+| 0x110 | 8 | 0-1, 2-3, 4-5, 6-7 | ADC_10, ADC_9, ADC_8, ADC_11 |
+| 0x111 | 8 | 0-1, 2-3, 4-5, 6-7 | ADC_5, ADC_4, ADC_7, ADC_6 |
+| 0x112 | 4 | 0-1, 2-3 | ADC_3, ADC_2 |
 
-Each frame uses the following layout:
+Detailed byte layout:
 
-- bytes 0-1: first channel raw ADC result (signed int16)
-- bytes 2-3: first channel current in 0.01 mA units (signed int16)
-- bytes 4-5: second channel raw ADC result (signed int16)
-- bytes 6-7: second channel current in 0.01 mA units (signed int16)
+- **0x110**
+  - bytes 0-1: ADC_10 raw result (signed int16)
+  - bytes 2-3: ADC_9 raw result (signed int16)
+  - bytes 4-5: ADC_8 raw result (signed int16)
+  - bytes 6-7: ADC_11 raw result (signed int16)
+- **0x111**
+  - bytes 0-1: ADC_5 raw result (signed int16)
+  - bytes 2-3: ADC_4 raw result (signed int16)
+  - bytes 4-5: ADC_7 raw result (signed int16)
+  - bytes 6-7: ADC_6 raw result (signed int16)
+- **0x112**
+  - bytes 0-1: ADC_3 raw result (signed int16)
+  - bytes 2-3: ADC_2 raw result (signed int16)
+  - DLC is 4 because only two ADC values are transmitted.
 
-Example: 4.00 mA is encoded as 400; 20.00 mA is encoded as 2000.
-The raw result can be converted back to voltage using raw * 62.5 uV.
+The raw ADC count can be converted to input voltage using:
+`V = raw * 0.0000625 V` for the current ADS1118 +/-2.048 V PGA setting.
+For the 100 ohm shunt, the equivalent current is `I(mA) = V * 10`, but
+these calculated values are **not included** in the CAN payload.
 
-The main loop performs a complete scan and then waits 80 ms. Since conversion
-time is about 2 ms per channel, the overall sample-and-send period is roughly
-100 ms. A CAN frame is sent only if all 10 ADC reads succeeded.
+## Example
 
-## Keil Watch / debug variables
+If the ordered raw values are ADC_10=21258, ADC_9=100, ADC_8=200, ADC_11=300,
+then CAN ID 0x110 sends:
 
-- ADC results: `adc420_raw[0..9]`, `adc420_voltage_v[0..9]`,
-  `adc420_current_ma[0..9]`, `adc420_current_centi_ma[0..9]`
-- Channel validity: `adc420_channel_valid[0..9]`, `adc420_scan_ok`
-- Scan status: `adc420_scan_count`, `adc420_scan_fail_count`
-- SPI status: `ads1118_spi_ready`, `ads1118_spi_timeout_count`,
-  `ads1118_last_chip`, `ads1118_last_channel`, `ads1118_last_config`,
-  `ads1118_last_raw`
-- CAN status: `can_init_ok`, `can_last_tx_ok`, `can_tx_count`,
-  `can_tx_fail_count`, `adc420_last_can_id`, `adc420_last_can_status`,
-  `adc420_can_frame_count`, `adc420_can_error_count`
+`DATA=0A 53 64 00 C8 00 2C 01`
 
-CAN must be connected through the board's CAN transceiver to a CAN adapter/host
-configured for 500 kbit/s. Check the adapter's termination and common ground.
-
+CAN ID 0x112 sends four bytes only; bytes 4-7 may appear as zero in the local
+UART debug print but are not part of that CAN frame because DLC=4.
 
 ## UART debug output
 
-The latest version prints diagnostic text through USART1 TX on PA9 at 115200 baud,
-8-N-1. Connect PA9 to the USB-UART adapter RX and connect grounds together. The
-adapter TX is not required. Do not connect a 5 V UART signal directly to an STM32
-input.
+Connect PA9 to USB-UART RX and connect grounds together. Configure 115200 baud,
+8 data bits, no parity, 1 stop bit. The UART prints raw ADC readings and each
+CAN transmit attempt including ID, DLC, all eight local data-buffer bytes, and
+TX status. For DLC=4, only the first four bytes are transmitted on CAN.
 
-Each scan prints all ADC_2..ADC_11 raw counts, voltage, current, and channel validity.
-Each CAN transmit attempt prints the standard ID, DLC, all eight data bytes, and
-the result (OK/FAIL). If no frames are sent, the UART prints the reason.
+A CAN frame is sent only when all ten ADC SPI reads succeed and CAN initialization
+succeeded.

@@ -4,15 +4,20 @@
 #include "stm32f10x.h"
 
 #define ADC420_CHANNEL_COUNT  10U
-#define ADC420_CAN_FRAME_COUNT 5U
-#define ADC420_CAN_ID_BASE    0x301U
+#define ADC420_CAN_FRAME_COUNT 3U
+#define ADC420_CAN_ID_BASE    0x110U
 
 /*
- * Channel array index is ADC ID - 2:
+ * ADC array index is ADC ID - 2:
  * index 0..9 correspond to ADC_2..ADC_11.
  *
- * CAN payload: each channel uses signed int16 raw counts and signed int16
- * current in 0.01 mA units, both little-endian.
+ * CAN transmits raw ADS1118 conversion results only. Each ADC result is a
+ * signed 16-bit value encoded little-endian. No current/engineering value is
+ * included in the CAN payload.
+ *
+ * Frame 0x110: ADC_10, ADC_9, ADC_8, ADC_11 (DLC=8)
+ * Frame 0x111: ADC_5, ADC_4, ADC_7, ADC_6 (DLC=8)
+ * Frame 0x112: ADC_3, ADC_2 (DLC=4)
  */
 extern volatile int16_t adc420_raw[ADC420_CHANNEL_COUNT];
 extern volatile float   adc420_voltage_v[ADC420_CHANNEL_COUNT];

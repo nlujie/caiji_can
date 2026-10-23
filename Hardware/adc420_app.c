@@ -30,6 +30,14 @@ static const ADC420_ChannelMap_t adc420_channel_map[ADC420_CHANNEL_COUNT] =
     { ADS1118_CHIP_N_O3, 0U, 11U }
 };
 
+/* Requested CAN order; every channel is sent as its raw ADC count. */
+static const uint8_t adc420_can_order[ADC420_CHANNEL_COUNT] =
+{
+    10U, 9U, 8U, 11U,
+    5U, 4U, 7U, 6U,
+    3U, 2U
+};
+
 volatile int16_t adc420_raw[ADC420_CHANNEL_COUNT] = { 0 };
 volatile float adc420_voltage_v[ADC420_CHANNEL_COUNT] = { 0.0f };
 volatile float adc420_current_ma[ADC420_CHANNEL_COUNT] = { 0.0f };
@@ -114,10 +122,8 @@ uint8_t ADC420_ScanAll(void)
         adc420_raw[i] = raw;
 
         /*
-         * PGA = +/-2.048 V: 1 LSB = 62.5 uV.
-         * A 100 ohm shunt gives I(mA) = V(V) * 10.
-         * 0.01 mA units equal raw / 16 for this resistor and PGA setting.
-         * Values are not clamped to 4..20 mA so open/under-range faults remain visible.
+         * Keep the existing current calculation for UART diagnostics only.
+         * CAN sends raw ADC counts exclusively.
          */
         adc420_voltage_v[i] = (float)raw * 0.0000625f;
         adc420_current_ma[i] = adc420_voltage_v[i] * 10.0f;
@@ -129,7 +135,6 @@ uint8_t ADC420_ScanAll(void)
     adc420_scan_count++;
     return all_ok;
 }
-
 
 /*
  * Print all ten readings in fixed-point form. Avoid %f so this works with the
@@ -202,8 +207,11 @@ uint8_t ADC420_SendCanFrames(void)
 {
     CanTxMsg tx;
     uint8_t frame;
-    uint8_t first_index;
+    uint8_t slot;
+    uint8_t slots_in_frame;
     uint8_t all_ok;
+    uint8_t tx_status;
+    uint8_t adc_id;
     uint16_t can_id;
 
     if (adc420_scan_ok == 0U)
@@ -222,55 +230,58 @@ uint8_t ADC420_SendCanFrames(void)
 
     for (frame = 0U; frame < ADC420_CAN_FRAME_COUNT; frame++)
     {
-        first_index = (uint8_t)(frame * 2U);
         can_id = (uint16_t)(ADC420_CAN_ID_BASE + frame);
+        slots_in_frame = (frame < 2U) ? 4U : 2U;
 
         tx.StdId = can_id;
         tx.ExtId = 0U;
         tx.IDE = CAN_Id_Standard;
         tx.RTR = CAN_RTR_Data;
-        tx.DLC = 8U;
+        tx.DLC = (uint8_t)(slots_in_frame * 2U);
 
-        /* First channel: raw ADC counts, then current in 0.01 mA units. */
-        ADC420_PackInt16LE(&tx.Data[0], adc420_raw[first_index]);
-        ADC420_PackInt16LE(&tx.Data[2], adc420_current_centi_ma[first_index]);
+        /* Clear unused local buffer bytes; they are not transmitted for DLC=4. */
+        for (slot = 0U; slot < 8U; slot++)
+        {
+            tx.Data[slot] = 0U;
+        }
 
-        /* Second channel: raw ADC counts, then current in 0.01 mA units. */
-        ADC420_PackInt16LE(&tx.Data[4], adc420_raw[first_index + 1U]);
-        ADC420_PackInt16LE(&tx.Data[6], adc420_current_centi_ma[first_index + 1U]);
+        for (slot = 0U; slot < slots_in_frame; slot++)
+        {
+            adc_id = adc420_can_order[(uint8_t)(frame * 4U + slot)];
+            ADC420_PackInt16LE(
+                &tx.Data[(uint8_t)(slot * 2U)],
+                adc420_raw[(uint8_t)(adc_id - 2U)]);
+        }
 
         adc420_last_can_id = can_id;
+        tx_status = CAN_SendMessage(&tx);
+
+        if (tx_status == CAN_TxStatus_Ok)
         {
-            uint8_t tx_status;
-            tx_status = CAN_SendMessage(&tx);
-
-            if (tx_status == CAN_TxStatus_Ok)
-            {
-                adc420_last_can_status = 1U;
-                adc420_can_frame_count++;
-            }
-            else
-            {
-                adc420_last_can_status = 0U;
-                adc420_can_error_count++;
-                all_ok = 0U;
-            }
-
-            DebugUart_Printf(
-                "[CAN-TX] ID=0x%03X DLC=%u DATA=%02X %02X %02X %02X %02X %02X %02X %02X RESULT=%s(%u)\r\n",
-                (unsigned int)can_id,
-                (unsigned int)tx.DLC,
-                (unsigned int)tx.Data[0],
-                (unsigned int)tx.Data[1],
-                (unsigned int)tx.Data[2],
-                (unsigned int)tx.Data[3],
-                (unsigned int)tx.Data[4],
-                (unsigned int)tx.Data[5],
-                (unsigned int)tx.Data[6],
-                (unsigned int)tx.Data[7],
-                (tx_status == CAN_TxStatus_Ok) ? "OK" : "FAIL",
-                (unsigned int)tx_status);
+            adc420_last_can_status = 1U;
+            adc420_can_frame_count++;
         }
+        else
+        {
+            adc420_last_can_status = 0U;
+            adc420_can_error_count++;
+            all_ok = 0U;
+        }
+
+        DebugUart_Printf(
+            "[CAN-TX] ID=0x%03X DLC=%u DATA=%02X %02X %02X %02X %02X %02X %02X %02X RESULT=%s(%u)\r\n",
+            (unsigned int)can_id,
+            (unsigned int)tx.DLC,
+            (unsigned int)tx.Data[0],
+            (unsigned int)tx.Data[1],
+            (unsigned int)tx.Data[2],
+            (unsigned int)tx.Data[3],
+            (unsigned int)tx.Data[4],
+            (unsigned int)tx.Data[5],
+            (unsigned int)tx.Data[6],
+            (unsigned int)tx.Data[7],
+            (tx_status == CAN_TxStatus_Ok) ? "OK" : "FAIL",
+            (unsigned int)tx_status);
     }
 
     return all_ok;
